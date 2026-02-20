@@ -128,6 +128,15 @@ function AuthContent() {
         if (!loginEmail || !loginPassword) return
         setLoginLoading(true)
         setNeedsConfirmation(false)
+
+        // Debug: check if env vars are loaded
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
+            toast.error('Configuração incompleta: variáveis de ambiente do Supabase não encontradas.')
+            setLoginLoading(false)
+            return
+        }
+
         console.log('Tentando login para:', loginEmail)
         try {
             const { error } = await supabase.auth.signInWithPassword({
@@ -153,9 +162,14 @@ function AuthContent() {
                 router.refresh()
                 router.push('/')
             }
-        } catch (err) {
+        } catch (err: unknown) {
             console.error('Fatal login error:', err)
-            toast.error('Erro inesperado ao fazer login.')
+            const message = err instanceof Error ? err.message : 'Erro desconhecido'
+            if (message.includes('Failed to fetch')) {
+                toast.error('Erro de conexão com o servidor. Verifique se as variáveis de ambiente do Supabase estão corretas.')
+            } else {
+                toast.error('Erro inesperado ao fazer login: ' + message)
+            }
             setLoginLoading(false)
         }
     }
@@ -187,6 +201,15 @@ function AuthContent() {
         e.preventDefault()
         if (!signupEmail || !signupPassword) return
         setSignupLoading(true)
+
+        // Debug: check if env vars are loaded
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
+            toast.error('Configuração incompleta: variáveis de ambiente do Supabase não encontradas.')
+            setSignupLoading(false)
+            return
+        }
+
         try {
             const { error } = await supabase.auth.signUp({
                 email: signupEmail,
@@ -204,9 +227,14 @@ function AuthContent() {
                 setTab('login')
                 setSignupLoading(false)
             }
-        } catch (err) {
+        } catch (err: unknown) {
             console.error('Fatal signup error:', err)
-            toast.error('Erro inesperado ao criar conta.')
+            const message = err instanceof Error ? err.message : 'Erro desconhecido'
+            if (message.includes('Failed to fetch')) {
+                toast.error('Erro de conexão com o servidor. Verifique se as variáveis de ambiente do Supabase estão corretas na Vercel.')
+            } else {
+                toast.error('Erro inesperado ao criar conta: ' + message)
+            }
             setSignupLoading(false)
         }
     }
@@ -220,8 +248,9 @@ function AuthContent() {
                 },
             })
             if (error) throw error
-        } catch (err: any) {
-            toast.error('Erro ao conectar com Google: ' + err.message)
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Erro desconhecido'
+            toast.error('Erro ao conectar com Google: ' + message)
         }
     }
 
