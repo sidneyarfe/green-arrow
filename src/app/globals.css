@@ -1,26 +1,312 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────── */
+/* GREEN ARROW — DESIGN SYSTEM v3             */
+/* Based on new Claude design                  */
+/* ─────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0d0d0f;
+  --surface: #141416;
+  --surface-2: #1a1a1d;
+  --surface-3: #1f1f23;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-2: rgba(255, 255, 255, 0.12);
+  --green: #00d26a;
+  --green-dim: rgba(0, 210, 106, 0.12);
+  --green-glow: rgba(0, 210, 106, 0.22);
+  --red: #f87171;
+  --red-dim: rgba(248, 113, 113, 0.10);
+  --yellow: #fbbf24;
+  --yellow-dim: rgba(251, 191, 36, 0.10);
+  --text-1: #f0f0f2;
+  --text-2: #8a8a96;
+  --text-3: #52525c;
+  --sidebar-w: 220px;
+  --topbar-h: 56px;
+  --radius: 8px;
+  --font: 'DM Sans', sans-serif;
+  --mono: 'DM Mono', monospace;
+
+  /* Legacy compat */
+  --bg-background: var(--bg);
+  --bg-surface: var(--surface);
+  --bg-surface-hover: var(--surface-2);
+  --border-subtle: var(--border);
+  --text-primary: var(--text-1);
+  --text-secondary: var(--text-2);
+  --text-muted: var(--text-3);
+  --accent: var(--green);
+  --accent-dim: var(--green-dim);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Base Reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  height: 100%;
+  background-color: var(--bg);
+  color: var(--text-2);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4 {
+  color: var(--text-1);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Scrollbar — ultra thin */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ping-slow {
+
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.25s ease-out forwards;
+}
+
+.fade-up {
+  animation: fadeUp 0.4s ease both;
+}
+
+/* ─── BUTTONS ─── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--green);
+  color: #000;
+  font-size: 13px;
+  font-family: var(--font);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 0 0 0 var(--green-glow);
+  white-space: nowrap;
+}
+
+.btn-primary:hover {
+  background: #00e876;
+  box-shadow: 0 0 20px var(--green-glow);
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-family: var(--font);
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-ghost:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-1);
+  font-weight: 500;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  background-color: var(--surface-2);
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+  font-weight: 500;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* ─── INPUT ─── */
+.input {
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  color: var(--text-1);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: var(--font);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+.input:focus {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* ─── CARD ─── */
+.card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.5rem;
+  transition: border-color 0.15s;
+}
+
+.card:hover {
+  border-color: var(--border-2);
+}
+
+/* ─── BADGES ─── */
+.badge-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--green-dim);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 20px;
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 210, 106, 0.2);
+}
+
+.badge-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 20px;
+  padding: 2px 8px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-warning {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(245, 158, 11, 0.1);
+  color: #F59E0B;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 20px;
+  padding: 2px 8px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-idle {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 20px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
 }
