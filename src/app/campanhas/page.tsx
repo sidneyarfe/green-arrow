@@ -29,6 +29,29 @@ import { toast } from 'sonner';
 
 // --- COMPONENTS ---
 
+function ProgressRing({ progress, size = 64, strokeWidth = 4 }: { progress: number; size?: number; strokeWidth?: number }) {
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (progress / 100) * circumference;
+
+    return (
+        <svg width={size} height={size} className="transform -rotate-90">
+            <circle
+                cx={size / 2} cy={size / 2} r={radius}
+                fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={strokeWidth}
+            />
+            <circle
+                cx={size / 2} cy={size / 2} r={radius}
+                fill="none" stroke="var(--green)" strokeWidth={strokeWidth}
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+                className="transition-all duration-500 ease-out"
+            />
+        </svg>
+    );
+}
+
 function StatusBadge({ status }: { status: Campaign['status'] }) {
     const config = {
         running: { label: 'Ativa', color: 'var(--green)', bg: 'var(--green-dim)', border: 'rgba(0,210,106,0.2)' },
