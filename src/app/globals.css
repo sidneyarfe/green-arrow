@@ -15,10 +15,10 @@
   --green: #00d26a;
   --green-dim: rgba(0, 210, 106, 0.12);
   --green-glow: rgba(0, 210, 106, 0.22);
+  --blue-dim: rgba(96, 165, 250, 0.10);
+  --yellow-dim: rgba(251, 191, 36, 0.10);
   --red: #f87171;
   --red-dim: rgba(248, 113, 113, 0.10);
-  --yellow: #fbbf24;
-  --yellow-dim: rgba(251, 191, 36, 0.10);
   --text-1: #f0f0f2;
   --text-2: #8a8a96;
   --text-3: #52525c;

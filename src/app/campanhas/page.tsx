@@ -21,35 +21,13 @@ import {
     ArrowLeft,
     Loader2,
     Activity,
-    Shield
+    Shield,
+    Trash2,
+    Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // --- COMPONENTS ---
-
-function Badge({ status }: { status: Campaign['status'] }) {
-    const styles = {
-        draft: 'bg-white/5 text-neutral-400 border-white/10',
-        running: 'bg-[#00E676]/10 text-[#00E676] border-[#00E676]/20',
-        paused: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-        completed: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-        error: 'bg-red-500/10 text-red-500 border-red-500/20',
-    };
-
-    const labels = {
-        draft: 'Rascunho',
-        running: 'Em execução',
-        paused: 'Pausado',
-        completed: 'Concluído',
-        error: 'Erro',
-    };
-
-    return (
-        <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${styles[status]}`}>
-            {labels[status]}
-        </span>
-    );
-}
 
 function ProgressRing({ progress, size = 64, strokeWidth = 4 }: { progress: number; size?: number; strokeWidth?: number }) {
     const radius = (size - strokeWidth) / 2;
@@ -71,6 +49,23 @@ function ProgressRing({ progress, size = 64, strokeWidth = 4 }: { progress: numb
                 className="transition-all duration-500 ease-out"
             />
         </svg>
+    );
+}
+
+function StatusBadge({ status }: { status: Campaign['status'] }) {
+    const config = {
+        running: { label: 'Ativa', color: 'var(--green)', bg: 'rgba(0,210,106,0.1)' },
+        paused: { label: 'Pausada', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
+        completed: { label: 'Concluída', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)' },
+        draft: { label: 'Rascunho', color: 'var(--text-3)', bg: 'var(--surface-3)' },
+        error: { label: 'Erro', color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
+    }[status] || { label: status, color: 'var(--text-3)', bg: 'var(--surface-3)' };
+
+    return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border border-white/5" style={{ backgroundColor: config.bg, color: config.color }}>
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color, boxShadow: status === 'running' ? `0 0 6px ${config.color}` : 'none' }} />
+            {config.label}
+        </span>
     );
 }
 
@@ -147,85 +142,215 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
     onNew: () => void;
     onOpen: (c: Campaign) => void;
 }) {
+    const [filter, setFilter] = useState<'all' | 'running' | 'paused' | 'completed' | 'draft'>('all');
+    const [search, setSearch] = useState('');
+
+    const filteredCampaigns = campaigns.filter(c => {
+        const matchesFilter = filter === 'all' || c.status === filter;
+        const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+        return matchesFilter && matchesSearch;
+    });
+
+    const stats = {
+        total: campaigns.length,
+        active: campaigns.filter(c => c.status === 'running').length,
+        sent: campaigns.reduce((acc, c) => acc + (c.stats?.sent || 0), 0),
+        avgDelivery: campaigns.length > 0
+            ? (campaigns.reduce((acc, c) => acc + (c.stats?.total > 0 ? (c.stats.sent / c.stats.total) : 0), 0) / campaigns.length * 100).toFixed(1)
+            : '0.0'
+    };
+
+    const handleDelete = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (confirm('Tem certeza que deseja excluir esta campanha?')) {
+            try {
+                await db.deleteCampaign(id);
+                toast.success('Campanha excluída');
+                window.location.reload();
+            } catch (err) {
+                toast.error('Erro ao excluir campanha');
+            }
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold text-white tracking-tight">Campanhas</h1>
-                    <p className="text-neutral-400 text-sm mt-1">Gerencie e monitore seus disparos em tempo real.</p>
+                    <h1 className="text-[19px] font-semibold tracking-tight text-white mb-1">Campanhas</h1>
+                    <p className="text-[13px] text-neutral-400">Gerencie e monitore seus disparos em tempo real.</p>
                 </div>
-                <button onClick={onNew} className="btn-primary" style={{ backgroundColor: '#00E676', color: '#000' }}>
-                    <Plus className="w-4 h-4" strokeWidth={2.5} />
-                    Nova Campanha
-                </button>
+                <div className="flex items-center gap-2">
+                    <button className="btn-ghost flex items-center gap-2" onClick={() => document.body.classList.toggle('show-empty')}>
+                        <Activity className="w-3.5 h-3.5" />
+                        Alternar preview
+                    </button>
+                    <button onClick={onNew} className="btn-primary">
+                        <Plus className="w-4 h-4" strokeWidth={2.5} />
+                        Nova campanha
+                    </button>
+                </div>
             </div>
 
-            <div className="bg-[#111111] border border-neutral-800 rounded-xl overflow-hidden">
-                <table className="w-full text-sm text-left">
-                    <thead>
-                        <tr className="border-b border-neutral-800 bg-white/[0.02]">
-                            <th className="px-6 py-4 font-medium text-neutral-400">Nome</th>
-                            <th className="px-6 py-4 font-medium text-neutral-400">Status</th>
-                            <th className="px-6 py-4 font-medium text-neutral-400">Progresso</th>
-                            <th className="px-6 py-4 font-medium text-neutral-400 text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-neutral-800">
-                        {loading ? (
-                            Array.from({ length: 3 }).map((_, i) => (
-                                <tr key={i} className="animate-pulse">
-                                    <td colSpan={4} className="px-6 py-8 bg-white/[0.01]"></td>
-                                </tr>
-                            ))
-                        ) : campaigns.length === 0 ? (
-                            <tr>
-                                <td colSpan={4} className="px-6 py-20 text-center">
-                                    <div className="flex flex-col items-center gap-3">
-                                        <div className="w-12 h-12 rounded-full bg-neutral-900 flex items-center justify-center border border-neutral-800">
-                                            <Mail className="w-5 h-5 text-neutral-500" />
-                                        </div>
-                                        <p className="text-neutral-400">Nenhuma campanha encontrada.</p>
-                                    </div>
-                                </td>
+            <div className="grid grid-cols-4 gap-3">
+                {[
+                    { label: 'Total', value: stats.total, sub: 'campanhas criadas' },
+                    { label: 'Ativas agora', value: stats.active, sub: 'em disparo', color: 'var(--green)' },
+                    { label: 'Emails enviados', value: stats.sent > 1000 ? (stats.sent / 1000).toFixed(1) + 'k' : stats.sent, sub: 'últimos 30 dias' },
+                    { label: 'Taxa média entrega', value: <>{stats.avgDelivery}<span className="text-sm text-neutral-400">%</span></>, sub: 'acima da média' },
+                ].map((s, i) => (
+                    <div key={i} className="bg-[#141416] border border-white/5 rounded-[10px] p-4 fade-up" style={{ animationDelay: `${i * 0.04}s` }}>
+                        <div className="text-[11px] text-neutral-500 uppercase tracking-widest mb-2">{s.label}</div>
+                        <div className="text-[22px] font-semibold text-white font-mono mb-1" style={{ color: s.color }}>{s.value}</div>
+                        <div className="text-[11.5px] text-neutral-500">{s.sub}</div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="bg-[#141416] border border-white/5 rounded-[10px] overflow-hidden fade-up" style={{ animationDelay: '0.16s' }}>
+                <div className="flex items-center justify-between p-4 px-5 border-b border-white/5 gap-3">
+                    <div className="flex gap-1">
+                        {[
+                            { id: 'all', label: 'Todas' },
+                            { id: 'running', label: 'Ativas' },
+                            { id: 'paused', label: 'Pausadas' },
+                            { id: 'completed', label: 'Concluídas' },
+                            { id: 'draft', label: 'Rascunhos' },
+                        ].map((t) => (
+                            <button
+                                key={t.id}
+                                onClick={() => setFilter(t.id as any)}
+                                className={`px-3 py-1.5 rounded-md text-[12.5px] transition-all ${filter === t.id ? 'bg-[#1f1f23] text-white font-medium' : 'text-neutral-500 hover:text-neutral-300 hover:bg-[#1a1a1d]'}`}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500" />
+                            <input
+                                type="text"
+                                placeholder="Buscar campanha..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="bg-[#1a1a1d] border border-white/10 rounded-md text-[13px] text-white pl-9 pr-3 py-1.5 w-[220px] outline-none focus:border-green-500/40 transition-all"
+                            />
+                        </div>
+                        <button className="btn-ghost" style={{ padding: '6px 10px' }}>
+                            <Activity className="w-3.5 h-3.5" />
+                            Filtros
+                        </button>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                        <thead>
+                            <tr className="border-b border-white/5">
+                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Campanha</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Status</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Progresso</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Enviados</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Abertura</th>
+                                <th className="px-5 py-3 text-right text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Ações</th>
                             </tr>
-                        ) : (
-                            campaigns.map((c) => {
-                                const prog = c.stats.total > 0 ? (c.stats.sent / c.stats.total) * 100 : 0;
-                                return (
-                                    <tr
-                                        key={c.id}
-                                        className="hover:bg-white/[0.02] transition-colors cursor-pointer"
-                                        onClick={() => onOpen(c)}
-                                    >
-                                        <td className="px-6 py-4">
-                                            <div className="font-medium text-white">{c.name}</div>
-                                            <div className="text-[11px] text-neutral-500 mt-0.5">Criada em {new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <Badge status={c.status} />
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex-1 h-1.5 bg-neutral-900 rounded-full overflow-hidden border border-neutral-800">
-                                                    <div
-                                                        className="h-full bg-[#00E676] transition-all duration-500"
-                                                        style={{ width: `${prog}%` }}
-                                                    />
-                                                </div>
-                                                <span className="text-xs text-neutral-400 tabular-nums">{Math.round(prog)}%</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button className="p-2 text-neutral-500 hover:text-white transition-colors">
-                                                <ChevronRight className="w-4 h-4" />
-                                            </button>
-                                        </td>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {loading ? (
+                                Array.from({ length: 3 }).map((_, i) => (
+                                    <tr key={i} className="animate-pulse">
+                                        <td colSpan={6} className="px-5 py-8 bg-white/[0.01]"></td>
                                     </tr>
-                                );
-                            })
-                        )}
-                    </tbody>
-                </table>
+                                ))
+                            ) : filteredCampaigns.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-5 py-20">
+                                        <div className="flex flex-col items-center gap-3 text-center">
+                                            <div className="w-12 h-12 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+                                                <Mail className="w-6 h-6 text-green-500" />
+                                            </div>
+                                            <h3 className="text-white font-semibold">Nenhuma campanha encontrada</h3>
+                                            <p className="text-neutral-500 text-sm max-w-[320px]">Crie sua primeira campanha para começar a disparar emails em massa para suas listas.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredCampaigns.map((c) => {
+                                    const prog = c.stats?.total > 0 ? (c.stats.sent / c.stats.total) * 100 : 0;
+                                    return (
+                                        <tr
+                                            key={c.id}
+                                            className="group hover:bg-white/[0.02] transition-colors cursor-pointer"
+                                            onClick={() => onOpen(c)}
+                                        >
+                                            <td className="px-5 py-4">
+                                                <div className="font-medium text-white text-[13.5px]">{c.name}</div>
+                                                <div className="text-[11.5px] text-neutral-500 mt-0.5">
+                                                    Lista: {c.config?.listId || '—'} · {c.stats?.total || 0} contatos
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <StatusBadge status={c.status} />
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="flex items-center gap-3 max-w-[180px]">
+                                                    <div className="flex-1 h-1.5 bg-[#1f1f23] rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full transition-all duration-1000 ${c.status === 'running' ? 'bg-[#00d26a]' : c.status === 'paused' ? 'bg-[#fbbf24]' : 'bg-[#60a5fa]'}`}
+                                                            style={{ width: `${prog}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-[12px] text-neutral-400 font-mono w-[36px] text-right">{Math.round(prog)}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className="text-[12.5px] text-neutral-300 font-mono">{c.stats?.sent || 0}</span>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className="text-[12.5px] text-green-500 font-mono">34.2%</span>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        className="w-8 h-8 rounded-md flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 transition-all"
+                                                        title="Visualizar"
+                                                        onClick={(e) => { e.stopPropagation(); onOpen(c); }}
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button className="w-8 h-8 rounded-md flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 transition-all" title="Configurar">
+                                                        <Clock className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        className="w-8 h-8 rounded-md flex items-center justify-center text-red-500/60 hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                                        title="Excluir"
+                                                        onClick={(e) => handleDelete(e, c.id)}
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="flex items-center justify-between p-4 px-5 border-t border-white/5">
+                    <span className="text-[12px] text-neutral-500">Mostrando {filteredCampaigns.length} de {campaigns.length} campanhas</span>
+                    <div className="flex gap-1">
+                        <button className="w-8 h-8 rounded-md border border-white/5 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/5 transition-all">
+                            <ChevronRight className="w-3.5 h-3.5 rotate-180" />
+                        </button>
+                        <button className="w-8 h-8 rounded-md bg-[#1f1f23] text-white text-[12px] font-medium border border-white/10">1</button>
+                        <button className="w-8 h-8 rounded-md border border-white/5 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/5 transition-all">
+                            <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );

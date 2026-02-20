@@ -91,22 +91,34 @@ export const db = {
         // 2. Add leads
         if (leads.length > 0) {
             const leadsData = leads.map(l => {
-                const { nome, email, ...extra_data } = l
+                const { nome, email, ...rest } = l
+                // Ensure extra_data is a clean object and has no null values that could break JSONB
+                const extra_data = Object.fromEntries(
+                    Object.entries(rest).filter(([_, v]) => v != null && v !== '')
+                )
+
                 return {
                     list_id: listData.id,
-                    nome,
-                    email,
+                    nome: String(nome || 'Cliente').trim(),
+                    email: String(email).trim().toLowerCase(),
                     extra_data
                 }
             })
+
+            console.log('Inserting leads batch:', leadsData.length)
 
             const { error: leadsError } = await supabase
                 .from('leads')
                 .insert(leadsData)
 
             if (leadsError) {
-                console.error('Error inserting leads:', leadsError)
-                throw new Error(`Lista criada, mas houve erro ao salvar os contatos: ${leadsError.message}`)
+                console.error('CRITICAL: Supabase Lead Insertion Error:', {
+                    code: leadsError.code,
+                    message: leadsError.message,
+                    details: leadsError.details,
+                    hint: leadsError.hint
+                })
+                throw new Error(`Erro nos contatos [${leadsError.code}]: ${leadsError.message}. Dica: ${leadsError.hint || 'Verifique as RLS no Supabase.'}`)
             }
         }
 
