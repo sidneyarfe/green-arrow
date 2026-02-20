@@ -72,7 +72,8 @@ export interface LogEntry {
 
 export interface DispatchPayload {
   secret: string;
-  lead: { nome: string; email: string };
-  template: { assunto: string; corpo: string };
-  responderPara: string;
+  to: string;
+  subject: string;
+  body: string;
+  replyTo?: string;
 }

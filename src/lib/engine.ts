@@ -97,51 +97,33 @@ export async function dispatchCampaign(
 
                 const payload: DispatchPayload = {
                     secret: instance.secretKey,
-                    lead: { nome: lead.nome, email: lead.email },
-                    template: { assunto: template.assunto, corpo: template.corpo },
-                    responderPara: config.responderPara,
+                    to: lead.email,
+                    subject: template.assunto,
+                    body: template.corpo,
+                    replyTo: config.responderPara,
                 };
 
                 try {
                     const res = await fetch(instance.url, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify(payload),
                         signal: controller.signal,
-                        mode: 'no-cors',
                     });
 
-                    // Google Apps Script with no-cors returns opaque response
-                    // We treat any non-error response as success
-                    let success = true;
-                    let msg = 'Enviado com sucesso';
+                    const resultText = await res.text();
 
-                    try {
-                        const result = await res.json();
-                        if (result.status === 'error') {
-                            success = false;
-                            msg = result.message || 'Erro desconhecido';
-                        }
-                    } catch {
-                        // opaque response — assume success
+                    if (!res.ok || !resultText.includes('"success"')) {
+                        throw new Error(`Falha na instância. Retorno: ${resultText.substring(0, 100)}`);
                     }
 
-                    if (success) {
-                        queue.sent++;
-                        callbacks.onLog({
-                            timestamp: timestamp(),
-                            instanceName: instance.name,
-                            type: 'success',
-                            message: `✓ ${lead.email} — ${msg}`,
-                        });
-                    } else {
-                        callbacks.onLog({
-                            timestamp: timestamp(),
-                            instanceName: instance.name,
-                            type: 'error',
-                            message: `✗ ${lead.email} — ${msg}`,
-                        });
-                    }
+                    queue.sent++;
+                    callbacks.onLog({
+                        timestamp: timestamp(),
+                        instanceName: instance.name,
+                        type: 'success',
+                        message: `✓ ${lead.email} — Enviado com sucesso`,
+                    });
                 } catch (err) {
                     if (controller.signal.aborted) return;
 

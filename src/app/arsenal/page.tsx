@@ -12,7 +12,6 @@ import {
     Copy,
     X,
     Server,
-    Code,
     HelpCircle,
     Check,
 } from 'lucide-react';
@@ -38,49 +37,29 @@ function ModalPortal({ children }: { children: React.ReactNode }) {
 }
 
 const GAS_CODE_TEMPLATE = (secret: string) => `function doPost(e) {
-  // --- CONFIGURAÇÃO ---
-  const MY_SECRET_KEY = "${secret}"; 
-  const SENDER_NAME = "Seu Nome / Empresa";
-  // --------------------
-
   try {
-    const data = JSON.parse(e.postData.contents);
+    // Recebe como texto para evitar bloqueios de CORS/Preflight
+    let payload = JSON.parse(e.postData.contents);
 
-    // 1. Teste de Conexão
-    if (data.acao === "teste") {
-      if (data.secret !== MY_SECRET_KEY) {
-        throw new Error("Chave secreta inválida.");
-      }
-      return ContentService.createTextOutput(JSON.stringify({ 
-        status: "success", 
-        message: "Conexão OK estabelecida com o Agente." 
-      })).setMimeType(ContentService.MimeType.JSON);
+    if (payload.secret !== "${secret}") {
+      return ContentService.createTextOutput(JSON.stringify({ error: "Unauthorized" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 2. Envio de E-mail
-    if (data.lead && data.template) {
-      if (data.secret !== MY_SECRET_KEY) {
-        throw new Error("Chave secreta inválida.");
-      }
-      GmailApp.sendEmail(data.lead.email, data.template.assunto, "", {
-        htmlBody: data.template.corpo,
-        name: SENDER_NAME,
-        replyTo: data.responderPara
-      });
-
-      return ContentService.createTextOutput(JSON.stringify({ 
-        status: "success", 
-        message: "Enviado" 
-      })).setMimeType(ContentService.MimeType.JSON);
+    // Se for apenas um teste de conexão
+    if (payload.acao === "teste") {
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Conexão OK" })).setMimeType(ContentService.MimeType.JSON);
     }
+    
+    // Disparo seguro
+    GmailApp.sendEmail(payload.to, payload.subject, payload.body, {
+      htmlBody: payload.body,
+      replyTo: payload.replyTo || ""
+    });
 
-    throw new Error("Payload inválido.");
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ 
-      status: "error", 
-      message: error.toString() 
-    })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ error: error.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
 }`;
 
@@ -165,14 +144,17 @@ export default function ArsenalPage() {
 
         setIsSaving(true);
         try {
-            // First Test Connection
+            // Test Connection using the same resilient strategy
             try {
-                await fetch(formUrl.trim(), {
+                const res = await fetch(formUrl.trim(), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ acao: 'teste', secret: formSecret.trim() }),
-                    mode: 'no-cors'
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ acao: 'teste', secret: formSecret.trim() })
                 });
+                const resultText = await res.text();
+                if (!res.ok || (!resultText.includes('"success"') && !resultText.includes('"Conexão OK"'))) {
+                    console.warn('Connection test details:', resultText);
+                }
             } catch (e) {
                 console.warn('Connection test failed (likely CORS), but continuing with save.');
             }
@@ -222,17 +204,21 @@ export default function ArsenalPage() {
         if (!inst) return;
         setInstances(prev => prev.map(i => i.id === id ? { ...i, status: 'testing' } : i));
         try {
-            await fetch(inst.url, {
+            const res = await fetch(inst.url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ acao: 'teste', secret: inst.secretKey }),
-                mode: 'no-cors'
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ acao: 'teste', secret: inst.secretKey })
             });
-            await new Promise(resolve => setTimeout(resolve, 800));
-            const updated = await db.updateInstance(id, { status: 'success', lastTested: new Date().toISOString() });
-            setInstances(prev => prev.map(i => i.id === id ? updated : i));
-            toast.success(`Conexão com ${inst.name} OK!`);
-        } catch {
+            const resultText = await res.text();
+
+            if (res.ok && (resultText.includes('"success"') || resultText.includes('"Conexão OK"'))) {
+                const updated = await db.updateInstance(id, { status: 'success', lastTested: new Date().toISOString() });
+                setInstances(prev => prev.map(i => i.id === id ? updated : i));
+                toast.success(`Conexão com ${inst.name} OK!`);
+            } else {
+                throw new Error(resultText);
+            }
+        } catch (err) {
             const updated = await db.updateInstance(id, { status: 'error', lastTested: new Date().toISOString() });
             setInstances(prev => prev.map(i => i.id === id ? updated : i));
             toast.error(`Falha na conexão com ${inst.name}.`);
