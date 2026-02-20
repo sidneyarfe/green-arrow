@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -93,80 +93,16 @@ function StrengthBar({ password }: { password: string }) {
     )
 }
 
-// ── Input Field ────────────────────────────────────────────
-function InputField({
-    type, placeholder, value, onChange, icon, onToggle, showToggle, extra
-}: {
-    type: string
-    placeholder: string
-    value: string
-    onChange: (v: string) => void
-    icon: React.ReactNode
-    onToggle?: () => void
-    showToggle?: boolean
-    extra?: React.ReactNode
-}) {
-    return (
-        <div style={{ position: 'relative' }}>
-            <span style={{
-                position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-                color: 'var(--text-3)', display: 'flex', alignItems: 'center', pointerEvents: 'none'
-            }}>
-                {icon}
-            </span>
-            <input
-                type={type}
-                placeholder={placeholder}
-                value={value}
-                onChange={e => onChange(e.target.value)}
-                required
-                style={{
-                    width: '100%',
-                    background: 'var(--surface-2)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: 8,
-                    color: 'var(--text-1)',
-                    fontSize: 13.5,
-                    padding: `9px 12px 9px ${showToggle ? '36px' : '36px'}`,
-                    paddingRight: showToggle ? 36 : 12,
-                    outline: 'none',
-                    fontFamily: 'var(--font)',
-                    transition: 'border-color 0.15s, box-shadow 0.15s',
-                    WebkitAppearance: 'none',
-                }}
-                onFocus={e => {
-                    e.target.style.borderColor = 'rgba(0,210,106,0.5)'
-                    e.target.style.boxShadow = '0 0 0 3px rgba(0,210,106,0.08)'
-                }}
-                onBlur={e => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.12)'
-                    e.target.style.boxShadow = 'none'
-                }}
-            />
-            {showToggle && (
-                <button
-                    type="button"
-                    onClick={onToggle}
-                    style={{
-                        position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--text-3)', padding: 2, display: 'flex', alignItems: 'center',
-                        transition: 'color 0.15s',
-                    }}
-                >
-                    {extra}
-                </button>
-            )}
-        </div>
-    )
-}
-
-// ── Main Auth Page ─────────────────────────────────────────
-export default function AuthPage() {
+// ── Auth Logic Component ───────────────────────────────────
+function AuthContent() {
     const searchParams = useSearchParams()
-    const [tab, setTab] = useState<'login' | 'cadastro'>(() => {
-        return searchParams.get('tab') === 'cadastro' ? 'cadastro' : 'login'
-    })
+    const [tab, setTab] = useState<'login' | 'cadastro'>('login')
+
+    useEffect(() => {
+        const t = searchParams.get('tab')
+        if (t === 'cadastro') setTab('cadastro')
+        else if (t === 'login') setTab('login')
+    }, [searchParams])
 
     // Login state
     const [loginEmail, setLoginEmail] = useState('')
@@ -187,36 +123,69 @@ export default function AuthPage() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!loginEmail || !loginPassword) return
         setLoginLoading(true)
-        const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword })
-        if (error) {
-            toast.error('Email ou senha inválidos.')
+        console.log('Tentando login para:', loginEmail)
+        try {
+            const { error } = await supabase.auth.signInWithPassword({
+                email: loginEmail,
+                password: loginPassword
+            })
+            if (error) {
+                console.error('Login error:', error)
+                toast.error('Email ou senha inválidos.')
+                setLoginLoading(false)
+            } else {
+                toast.success('Bem-vindo de volta!')
+                router.refresh()
+                router.push('/')
+            }
+        } catch (err) {
+            console.error('Fatal login error:', err)
+            toast.error('Erro inesperado ao fazer login.')
             setLoginLoading(false)
-        } else {
-            toast.success('Bem-vindo de volta!')
-            router.push('/')
-            router.refresh()
         }
     }
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!signupEmail || !signupPassword) return
         setSignupLoading(true)
-        const { error } = await supabase.auth.signUp({
-            email: signupEmail,
-            password: signupPassword,
-            options: {
-                emailRedirectTo: `${window.location.origin}/auth/callback`,
-                data: { full_name: `${firstName} ${lastName}`.trim() }
-            },
-        })
-        if (error) {
-            toast.error('Erro ao criar conta: ' + error.message)
+        try {
+            const { error } = await supabase.auth.signUp({
+                email: signupEmail,
+                password: signupPassword,
+                options: {
+                    emailRedirectTo: `${window.location.origin}/auth/callback`,
+                    data: { full_name: `${firstName} ${lastName}`.trim() }
+                },
+            })
+            if (error) {
+                toast.error('Erro ao criar conta: ' + error.message)
+                setSignupLoading(false)
+            } else {
+                toast.success('Conta criada! Verifique seu email.')
+                setTab('login')
+                setSignupLoading(false)
+            }
+        } catch (err) {
+            console.error('Fatal signup error:', err)
+            toast.error('Erro inesperado ao criar conta.')
             setSignupLoading(false)
-        } else {
-            toast.success('Conta criada! Verifique seu email.')
-            setTab('login')
-            setSignupLoading(false)
+        }
+    }
+
+    const handleGoogleLogin = async () => {
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                },
+            })
+            if (error) throw error
+        } catch (err: any) {
+            toast.error('Erro ao conectar com Google: ' + err.message)
         }
     }
 
@@ -229,6 +198,9 @@ export default function AuthPage() {
         fontSize: 13.5,
         outline: 'none',
         fontFamily: 'var(--font)',
+        padding: '9px 12px 9px 36px',
+        WebkitAppearance: 'none',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
     }
 
     return (
@@ -360,14 +332,16 @@ export default function AuthPage() {
 
                             <div style={{ padding: '24px 28px' }}>
                                 {/* Google */}
-                                <button style={{
-                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-                                    padding: '9px 14px', borderRadius: 8,
-                                    border: '1px solid rgba(255,255,255,0.12)',
-                                    background: 'var(--surface-2)', color: 'var(--text-2)',
-                                    fontSize: 13.5, fontFamily: 'var(--font)', fontWeight: 400,
-                                    cursor: 'pointer', marginBottom: 16, transition: 'all 0.15s',
-                                }}
+                                <button
+                                    onClick={handleGoogleLogin}
+                                    style={{
+                                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                                        padding: '9px 14px', borderRadius: 8,
+                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        background: 'var(--surface-2)', color: 'var(--text-2)',
+                                        fontSize: 13.5, fontFamily: 'var(--font)', fontWeight: 400,
+                                        cursor: 'pointer', marginBottom: 16, transition: 'all 0.15s',
+                                    }}
                                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-3)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-1)'; }}
                                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}
                                 >
@@ -394,7 +368,7 @@ export default function AuthPage() {
                                             <input
                                                 type="email" required placeholder="voce@empresa.com"
                                                 value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-                                                style={{ ...inputStyle, padding: '9px 12px 9px 36px' }}
+                                                style={{ ...inputStyle }}
                                             />
                                         </div>
                                     </div>
@@ -416,7 +390,7 @@ export default function AuthPage() {
                                             <input
                                                 type={showLoginPass ? 'text' : 'password'} required placeholder="••••••••"
                                                 value={loginPassword} onChange={e => setLoginPassword(e.target.value)}
-                                                style={{ ...inputStyle, padding: '9px 36px 9px 36px' }}
+                                                style={{ ...inputStyle, paddingRight: 36 }}
                                             />
                                             <button type="button" onClick={() => setShowLoginPass(p => !p)} style={{
                                                 position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
@@ -481,14 +455,16 @@ export default function AuthPage() {
 
                             <div style={{ padding: '24px 28px' }}>
                                 {/* Google */}
-                                <button style={{
-                                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-                                    padding: '9px 14px', borderRadius: 8,
-                                    border: '1px solid rgba(255,255,255,0.12)',
-                                    background: 'var(--surface-2)', color: 'var(--text-2)',
-                                    fontSize: 13.5, fontFamily: 'var(--font)', fontWeight: 400,
-                                    cursor: 'pointer', marginBottom: 16, transition: 'all 0.15s',
-                                }}
+                                <button
+                                    onClick={handleGoogleLogin}
+                                    style={{
+                                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                                        padding: '9px 14px', borderRadius: 8,
+                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        background: 'var(--surface-2)', color: 'var(--text-2)',
+                                        fontSize: 13.5, fontFamily: 'var(--font)', fontWeight: 400,
+                                        cursor: 'pointer', marginBottom: 16, transition: 'all 0.15s',
+                                    }}
                                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-3)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-1)'; }}
                                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}
                                 >
@@ -520,7 +496,7 @@ export default function AuthPage() {
                                                     <input
                                                         type="text" placeholder={placeholder}
                                                         value={value} onChange={e => onChange(e.target.value)}
-                                                        style={{ ...inputStyle, padding: '9px 12px 9px 36px' }}
+                                                        style={{ ...inputStyle }}
                                                     />
                                                 </div>
                                             </div>
@@ -539,7 +515,7 @@ export default function AuthPage() {
                                             <input
                                                 type="email" required placeholder="voce@empresa.com"
                                                 value={signupEmail} onChange={e => setSignupEmail(e.target.value)}
-                                                style={{ ...inputStyle, padding: '9px 12px 9px 36px' }}
+                                                style={{ ...inputStyle }}
                                             />
                                         </div>
                                     </div>
@@ -556,7 +532,7 @@ export default function AuthPage() {
                                             <input
                                                 type={showSignupPass ? 'text' : 'password'} required placeholder="Mín. 8 caracteres"
                                                 value={signupPassword} onChange={e => setSignupPassword(e.target.value)}
-                                                style={{ ...inputStyle, padding: '9px 36px 9px 36px' }}
+                                                style={{ ...inputStyle, paddingRight: 36 }}
                                             />
                                             <button type="button" onClick={() => setShowSignupPass(p => !p)} style={{
                                                 position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
@@ -628,5 +604,18 @@ export default function AuthPage() {
                 </div>
             </div>
         </div>
+    )
+}
+
+// ── Final Export with Suspense ──────────────────────────────
+export default function AuthPage() {
+    return (
+        <Suspense fallback={
+            <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ color: 'var(--green)' }}>Carregando...</div>
+            </div>
+        }>
+            <AuthContent />
+        </Suspense>
     )
 }

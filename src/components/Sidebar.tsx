@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import type { User } from '@supabase/supabase-js';
 
 const navGroups = [
     {
@@ -213,19 +216,17 @@ export default function Sidebar() {
     );
 }
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
-
 function UserFooter() {
     const [user, setUser] = useState<User | null>(null);
     const supabase = createClient();
     const router = useRouter();
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUser(user as User);
-        });
+        const fetchUser = async () => {
+            const { data } = await supabase.auth.getUser();
+            setUser(data.user);
+        };
+        fetchUser();
     }, []);
 
     const handleLogout = async () => {
