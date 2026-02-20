@@ -89,23 +89,33 @@ export const db = {
         if (listError) throw listError
 
         // 2. Add leads
-        const leadsData = leads.map(l => {
-            const { nome, email, ...extra_data } = l
-            return {
-                list_id: listData.id,
-                nome,
-                email,
-                extra_data
+        if (leads.length > 0) {
+            const leadsData = leads.map(l => {
+                const { nome, email, ...extra_data } = l
+                return {
+                    list_id: listData.id,
+                    nome,
+                    email,
+                    extra_data
+                }
+            })
+
+            const { error: leadsError } = await supabase
+                .from('leads')
+                .insert(leadsData)
+
+            if (leadsError) {
+                console.error('Error inserting leads:', leadsError)
+                throw new Error(`Lista criada, mas houve erro ao salvar os contatos: ${leadsError.message}`)
             }
-        })
+        }
 
-        const { error: leadsError } = await supabase
-            .from('leads')
-            .insert(leadsData)
-
-        if (leadsError) throw leadsError
-
-        return { ...listData, createdAt: listData.created_at, leads } as LeadList
+        return {
+            id: listData.id,
+            name: listData.name,
+            createdAt: listData.created_at,
+            leads
+        } as LeadList
     },
 
     async deleteList(id: string): Promise<void> {
