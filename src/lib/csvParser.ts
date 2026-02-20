@@ -63,7 +63,11 @@ export function sanitizeLeads(
         }
 
         seen.add(email);
-        leads.push({ nome: nome || 'Cliente', email });
+        leads.push({
+            ...row, // Preserve all columns
+            nome: nome || 'Cliente',
+            email
+        });
     }
 
     return { leads, duplicates, invalid };

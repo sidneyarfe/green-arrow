@@ -95,8 +95,7 @@ export const db = {
                 list_id: listData.id,
                 nome,
                 email,
-                extra_data,
-                user_id: user?.id
+                extra_data
             }
         })
 
