@@ -109,6 +109,8 @@ function AuthContent() {
     const [loginPassword, setLoginPassword] = useState('')
     const [showLoginPass, setShowLoginPass] = useState(false)
     const [loginLoading, setLoginLoading] = useState(false)
+    const [needsConfirmation, setNeedsConfirmation] = useState(false)
+    const [resending, setResending] = useState(false)
 
     // Signup state
     const [firstName, setFirstName] = useState('')
@@ -125,6 +127,7 @@ function AuthContent() {
         e.preventDefault()
         if (!loginEmail || !loginPassword) return
         setLoginLoading(true)
+        setNeedsConfirmation(false)
         console.log('Tentando login para:', loginEmail)
         try {
             const { error } = await supabase.auth.signInWithPassword({
@@ -133,7 +136,17 @@ function AuthContent() {
             })
             if (error) {
                 console.error('Login error:', error)
-                toast.error('Email ou senha inválidos.')
+                if (error.message === 'Email not confirmed') {
+                    setNeedsConfirmation(true)
+                    toast.error('Email não confirmado.', {
+                        description: 'Verifique sua caixa de entrada para confirmar seu acesso.',
+                        duration: 6000,
+                    })
+                } else if (error.message === 'Invalid login credentials') {
+                    toast.error('Email ou senha inválidos.')
+                } else {
+                    toast.error('Erro ao fazer login: ' + error.message)
+                }
                 setLoginLoading(false)
             } else {
                 toast.success('Bem-vindo de volta!')
@@ -144,6 +157,29 @@ function AuthContent() {
             console.error('Fatal login error:', err)
             toast.error('Erro inesperado ao fazer login.')
             setLoginLoading(false)
+        }
+    }
+
+    const handleResendConfirmation = async () => {
+        if (!loginEmail) return
+        setResending(true)
+        try {
+            const { error } = await supabase.auth.resend({
+                type: 'signup',
+                email: loginEmail,
+                options: {
+                    emailRedirectTo: `${window.location.origin}/auth/callback`,
+                }
+            })
+            if (error) {
+                toast.error('Erro ao reenviar: ' + error.message)
+            } else {
+                toast.success('Email de confirmação reenviado!')
+            }
+        } catch (err) {
+            toast.error('Erro inesperado.')
+        } finally {
+            setResending(false)
         }
     }
 
@@ -419,6 +455,30 @@ function AuthContent() {
                                     >
                                         {loginLoading ? 'Entrando...' : (<>Entrar na conta <IconArrow /></>)}
                                     </button>
+
+                                    {needsConfirmation && (
+                                        <div style={{ marginTop: 16, textAlign: 'center' }}>
+                                            <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
+                                                Não recebeu o email?
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={handleResendConfirmation}
+                                                disabled={resending}
+                                                style={{
+                                                    fontSize: 12,
+                                                    color: 'var(--green)',
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    cursor: resending ? 'not-allowed' : 'pointer',
+                                                    fontWeight: 500,
+                                                    textDecoration: 'underline',
+                                                }}
+                                            >
+                                                {resending ? 'Reenviando...' : 'Reenviar email de confirmação'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </form>
                             </div>
 
