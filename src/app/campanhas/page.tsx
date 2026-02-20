@@ -142,188 +142,196 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
     onNew: () => void;
     onOpen: (c: Campaign) => void;
 }) {
-    const [filter, setFilter] = useState<'all' | 'running' | 'paused' | 'completed' | 'draft'>('all');
     const [search, setSearch] = useState('');
+    const [filter, setFilter] = useState<'all' | 'running' | 'paused' | 'completed' | 'draft'>('all');
+    const [showEmpty, setShowEmpty] = useState(false);
 
-    const filteredCampaigns = campaigns.filter(c => {
-        const matchesFilter = filter === 'all' || c.status === filter;
+    const filtered = campaigns.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
-        return matchesFilter && matchesSearch;
+        const matchesFilter = filter === 'all' || c.status === filter;
+        return matchesSearch && matchesFilter;
     });
 
     const stats = {
         total: campaigns.length,
         active: campaigns.filter(c => c.status === 'running').length,
         sent: campaigns.reduce((acc, c) => acc + (c.stats?.sent || 0), 0),
-        avgDelivery: campaigns.length > 0
-            ? (campaigns.reduce((acc, c) => acc + (c.stats?.total > 0 ? (c.stats.sent / c.stats.total) : 0), 0) / campaigns.length * 100).toFixed(1)
-            : '0.0'
+        avgRate: campaigns.length > 0
+            ? (campaigns.reduce((acc, c) => {
+                const deliveryRate = (c.stats?.total && c.stats.total > 0) ? (c.stats.sent / c.stats.total) * 100 : 0;
+                return acc + deliveryRate;
+            }, 0) / campaigns.length).toFixed(1)
+            : '0'
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (confirm('Tem certeza que deseja excluir esta campanha?')) {
-            try {
-                await db.deleteCampaign(id);
-                toast.success('Campanha excluída');
-                window.location.reload();
-            } catch (err) {
-                toast.error('Erro ao excluir campanha');
-            }
+        if (!confirm('Tem certeza que deseja excluir esta campanha?')) return;
+        try {
+            await db.deleteCampaign(id);
+            toast.success('Campanha excluída!');
+            window.location.reload();
+        } catch (err) {
+            toast.error('Erro ao excluir campanha');
         }
     };
 
+    const StatusBadge = ({ status }: { status: Campaign['status'] }) => {
+        const config = {
+            running: { label: 'Ativa', class: 'ativa' },
+            paused: { label: 'Pausada', class: 'pausada' },
+            completed: { label: 'Concluída', class: 'concluida' },
+            draft: { label: 'Rascunho', class: 'rascunho' },
+            error: { label: 'Erro', class: 'rascunho' }
+        }[status] || { label: status, class: 'rascunho' };
+
+        return (
+            <span className={`badge ${config.class}`}>
+                <span className="badge-dot"></span>
+                {config.label}
+            </span>
+        );
+    };
+
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
+        <div className={`page ${showEmpty ? 'show-empty' : ''}`}>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h1 className="text-[19px] font-semibold tracking-tight text-white mb-1">Campanhas</h1>
-                    <p className="text-[13px] text-neutral-400">Gerencie e monitore seus disparos em tempo real.</p>
+                    <h1 className="page-title">Campanhas</h1>
+                    <p className="page-desc">Gerencie e monitore seus disparos em tempo real.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button className="btn-ghost flex items-center gap-2" onClick={() => document.body.classList.toggle('show-empty')}>
+                    <button className="btn-ghost" onClick={() => setShowEmpty(!showEmpty)}>
                         <Activity className="w-3.5 h-3.5" />
                         Alternar preview
                     </button>
-                    <button onClick={onNew} className="btn-primary">
-                        <Plus className="w-4 h-4" strokeWidth={2.5} />
+                    <button className="btn-primary" onClick={onNew}>
+                        <Plus className="w-3.5 h-3.5" />
                         Nova campanha
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
-                {[
-                    { label: 'Total', value: stats.total, sub: 'campanhas criadas' },
-                    { label: 'Ativas agora', value: stats.active, sub: 'em disparo', color: 'var(--green)' },
-                    { label: 'Emails enviados', value: stats.sent > 1000 ? (stats.sent / 1000).toFixed(1) + 'k' : stats.sent, sub: 'últimos 30 dias' },
-                    { label: 'Taxa média entrega', value: <>{stats.avgDelivery}<span className="text-sm text-neutral-400">%</span></>, sub: 'acima da média' },
-                ].map((s, i) => (
-                    <div key={i} className="bg-[#141416] border border-white/5 rounded-[10px] p-4 fade-up" style={{ animationDelay: `${i * 0.04}s` }}>
-                        <div className="text-[11px] text-neutral-500 uppercase tracking-widest mb-2">{s.label}</div>
-                        <div className="text-[22px] font-semibold text-white font-mono mb-1" style={{ color: s.color }}>{s.value}</div>
-                        <div className="text-[11.5px] text-neutral-500">{s.sub}</div>
-                    </div>
-                ))}
+            {/* Summary Strip */}
+            <div className="summary-strip">
+                <div className="summary-card">
+                    <div className="summary-label">Total</div>
+                    <div className="summary-value">{stats.total}</div>
+                    <div className="summary-sub">campanhas criadas</div>
+                </div>
+                <div className="summary-card">
+                    <div className="summary-label">Ativas agora</div>
+                    <div className="summary-value" style={{ color: 'var(--green)' }}>{stats.active}</div>
+                    <div className="summary-sub">em disparo</div>
+                </div>
+                <div className="summary-card">
+                    <div className="summary-label">Emails enviados</div>
+                    <div className="summary-value">{(stats.sent / 1000).toFixed(1)}k</div>
+                    <div className="summary-sub">histórico total</div>
+                </div>
+                <div className="summary-card">
+                    <div className="summary-label">Taxa média entrega</div>
+                    <div className="summary-value">{stats.avgRate}<span style={{ fontSize: '14px', color: 'var(--text-2)' }}>%</span></div>
+                    <div className="summary-sub">acima da média</div>
+                </div>
             </div>
 
-            <div className="bg-[#141416] border border-white/5 rounded-[10px] overflow-hidden fade-up" style={{ animationDelay: '0.16s' }}>
-                <div className="flex items-center justify-between p-4 px-5 border-b border-white/5 gap-3">
-                    <div className="flex gap-1">
-                        {[
-                            { id: 'all', label: 'Todas' },
-                            { id: 'running', label: 'Ativas' },
-                            { id: 'paused', label: 'Pausadas' },
-                            { id: 'completed', label: 'Concluídas' },
-                            { id: 'draft', label: 'Rascunhos' },
-                        ].map((t) => (
+            {/* Table Card */}
+            <div className="table-card">
+                {/* Toolbar */}
+                <div className="table-toolbar">
+                    <div className="toolbar-left">
+                        <div className="filter-tabs">
                             <button
-                                key={t.id}
-                                onClick={() => setFilter(t.id as any)}
-                                className={`px-3 py-1.5 rounded-md text-[12.5px] transition-all ${filter === t.id ? 'bg-[#1f1f23] text-white font-medium' : 'text-neutral-500 hover:text-neutral-300 hover:bg-[#1a1a1d]'}`}
-                            >
-                                {t.label}
-                            </button>
-                        ))}
+                                className={`ftab ${filter === 'all' ? 'active' : ''}`}
+                                onClick={() => setFilter('all')}
+                            >Todas</button>
+                            <button
+                                className={`ftab ${filter === 'running' ? 'active' : ''}`}
+                                onClick={() => setFilter('running')}
+                            >Ativas</button>
+                            <button
+                                className={`ftab ${filter === 'paused' ? 'active' : ''}`}
+                                onClick={() => setFilter('paused')}
+                            >Pausadas</button>
+                            <button
+                                className={`ftab ${filter === 'completed' ? 'active' : ''}`}
+                                onClick={() => setFilter('completed')}
+                            >Concluídas</button>
+                            <button
+                                className={`ftab ${filter === 'draft' ? 'active' : ''}`}
+                                onClick={() => setFilter('draft')}
+                            >Rascunhos</button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500" />
+                    <div className="toolbar-right">
+                        <div className="search-wrap">
+                            <span className="search-icon">
+                                <Search className="w-3.5 h-3.5" />
+                            </span>
                             <input
                                 type="text"
                                 placeholder="Buscar campanha..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                className="bg-[#1a1a1d] border border-white/10 rounded-md text-[13px] text-white pl-9 pr-3 py-1.5 w-[220px] outline-none focus:border-green-500/40 transition-all"
                             />
                         </div>
-                        <button className="btn-ghost" style={{ padding: '6px 10px' }}>
-                            <Activity className="w-3.5 h-3.5" />
-                            Filtros
-                        </button>
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
-                        <thead>
-                            <tr className="border-b border-white/5">
-                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Campanha</th>
-                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Status</th>
-                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Progresso</th>
-                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Enviados</th>
-                                <th className="px-5 py-3 text-left text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Abertura</th>
-                                <th className="px-5 py-3 text-right text-[11px] font-medium text-neutral-500 uppercase tracking-widest">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {loading ? (
-                                Array.from({ length: 3 }).map((_, i) => (
-                                    <tr key={i} className="animate-pulse">
-                                        <td colSpan={6} className="px-5 py-8 bg-white/[0.01]"></td>
-                                    </tr>
-                                ))
-                            ) : filteredCampaigns.length === 0 ? (
+                {/* Content View */}
+                {!showEmpty && filtered.length > 0 ? (
+                    <div id="view-filled">
+                        <table>
+                            <thead>
                                 <tr>
-                                    <td colSpan={6} className="px-5 py-20">
-                                        <div className="flex flex-col items-center gap-3 text-center">
-                                            <div className="w-12 h-12 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-                                                <Mail className="w-6 h-6 text-green-500" />
-                                            </div>
-                                            <h3 className="text-white font-semibold">Nenhuma campanha encontrada</h3>
-                                            <p className="text-neutral-500 text-sm max-w-[320px]">Crie sua primeira campanha para começar a disparar emails em massa para suas listas.</p>
-                                        </div>
-                                    </td>
+                                    <th style={{ width: '36%' }}>Campanha</th>
+                                    <th style={{ width: '12%' }}>Status</th>
+                                    <th style={{ width: '24%' }}>Progresso</th>
+                                    <th style={{ width: '10%' }}>Enviados</th>
+                                    <th style={{ width: '10%' }}>Entrega</th>
+                                    <th style={{ width: '8%' }}>Ações</th>
                                 </tr>
-                            ) : (
-                                filteredCampaigns.map((c) => {
-                                    const prog = c.stats?.total > 0 ? (c.stats.sent / c.stats.total) * 100 : 0;
+                            </thead>
+                            <tbody>
+                                {filtered.map(c => {
+                                    const totalLeads = c.stats?.total || 0;
+                                    const sentCount = c.stats?.sent || 0;
+                                    const progress = totalLeads > 0 ? (sentCount / totalLeads) * 100 : 0;
+                                    const deliveryRate = totalLeads > 0 ? (sentCount / totalLeads) * 100 : 0;
+                                    const progColorClass = c.status === 'paused' ? 'yellow' : c.status === 'completed' ? 'blue' : '';
+
                                     return (
-                                        <tr
-                                            key={c.id}
-                                            className="group hover:bg-white/[0.02] transition-colors cursor-pointer"
-                                            onClick={() => onOpen(c)}
-                                        >
-                                            <td className="px-5 py-4">
-                                                <div className="font-medium text-white text-[13.5px]">{c.name}</div>
-                                                <div className="text-[11.5px] text-neutral-500 mt-0.5">
-                                                    Lista: {c.config?.listId || '—'} · {c.stats?.total || 0} contatos
-                                                </div>
+                                        <tr key={c.id} onClick={() => onOpen(c)}>
+                                            <td>
+                                                <div className="camp-name">{c.name}</div>
+                                                <div className="camp-meta">Lista: {c.config?.listId || '—'} · {totalLeads} contatos</div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <StatusBadge status={c.status} />
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center gap-3 max-w-[180px]">
-                                                    <div className="flex-1 h-1.5 bg-[#1f1f23] rounded-full overflow-hidden">
+                                            <td><StatusBadge status={c.status} /></td>
+                                            <td>
+                                                <div className="progress-wrap">
+                                                    <div className="progress-bar">
                                                         <div
-                                                            className={`h-full transition-all duration-1000 ${c.status === 'running' ? 'bg-[#00d26a]' : c.status === 'paused' ? 'bg-[#fbbf24]' : 'bg-[#60a5fa]'}`}
-                                                            style={{ width: `${prog}%` }}
-                                                        />
+                                                            className={`progress-fill ${progColorClass}`}
+                                                            style={{ width: `${progress}%` }}
+                                                        ></div>
                                                     </div>
-                                                    <span className="text-[12px] text-neutral-400 font-mono w-[36px] text-right">{Math.round(prog)}%</span>
+                                                    <span className="progress-pct">{Math.round(progress)}%</span>
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <span className="text-[12.5px] text-neutral-300 font-mono">{c.stats?.sent || 0}</span>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <span className="text-[12.5px] text-green-500 font-mono">34.2%</span>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        className="w-8 h-8 rounded-md flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 transition-all"
-                                                        title="Visualizar"
-                                                        onClick={(e) => { e.stopPropagation(); onOpen(c); }}
-                                                    >
+                                            <td><span className="stat-num">{sentCount}</span></td>
+                                            <td><span className="stat-num" style={{ color: deliveryRate > 90 ? 'var(--green)' : '' }}>{deliveryRate.toFixed(1)}%</span></td>
+                                            <td>
+                                                <div className="row-actions" onClick={e => e.stopPropagation()}>
+                                                    <button className="action-btn" title="Ver" onClick={() => onOpen(c)}>
                                                         <Eye className="w-3.5 h-3.5" />
                                                     </button>
-                                                    <button className="w-8 h-8 rounded-md flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 transition-all" title="Configurar">
+                                                    <button className="action-btn" title="Configurar">
                                                         <Clock className="w-3.5 h-3.5" />
                                                     </button>
                                                     <button
-                                                        className="w-8 h-8 rounded-md flex items-center justify-center text-red-500/60 hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                                        className="action-btn danger"
                                                         title="Excluir"
                                                         onClick={(e) => handleDelete(e, c.id)}
                                                     >
@@ -333,24 +341,41 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
                                             </td>
                                         </tr>
                                     );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                })}
+                            </tbody>
+                        </table>
 
-                <div className="flex items-center justify-between p-4 px-5 border-t border-white/5">
-                    <span className="text-[12px] text-neutral-500">Mostrando {filteredCampaigns.length} de {campaigns.length} campanhas</span>
-                    <div className="flex gap-1">
-                        <button className="w-8 h-8 rounded-md border border-white/5 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/5 transition-all">
-                            <ChevronRight className="w-3.5 h-3.5 rotate-180" />
-                        </button>
-                        <button className="w-8 h-8 rounded-md bg-[#1f1f23] text-white text-[12px] font-medium border border-white/10">1</button>
-                        <button className="w-8 h-8 rounded-md border border-white/5 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/5 transition-all">
-                            <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="table-footer">
+                            <span className="table-footer-info">Mostrando {filtered.length} de {campaigns.length} campanhas</span>
+                            <div className="pagination">
+                                <button className="page-btn">
+                                    <ChevronRight className="w-3.5 h-3.5 rotate-180" />
+                                </button>
+                                <button className="page-btn active">1</button>
+                                <button className="page-btn">
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div id="view-empty">
+                        <div className="empty-state">
+                            <div className="empty-icon-wrap">
+                                <Mail className="w-6 h-6 text-[#00d26a]" />
+                            </div>
+                            <div className="empty-title">Nenhuma campanha encontrada</div>
+                            <div className="empty-desc">Crie sua primeira campanha para começar a disparar emails em massa para suas listas.</div>
+                            <div className="empty-actions">
+                                <button className="btn-ghost" onClick={() => setShowEmpty(false)}>Ver campanhas</button>
+                                <button className="btn-primary" onClick={onNew}>
+                                    <Plus className="w-3.5 h-3.5" />
+                                    Nova campanha
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -398,7 +423,7 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
     const selectedList = useMemo(() => lists.find(l => l.id === form.listId), [lists, form.listId]);
     const selectedTemplate = useMemo(() => templates.find(t => t.id === form.templateId), [templates, form.templateId]);
 
-    const stats = useMemo(() => {
+    const calcStats = useMemo(() => {
         const leadCount = selectedList?.leads?.length || 0;
         const instanceCount = form.instanceIds.length;
         const perInstance = instanceCount > 0 ? Math.ceil(leadCount / instanceCount) : 0;
@@ -421,10 +446,10 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
                     intervalMax: form.maxDelay
                 },
                 stats: {
-                    total: stats.leadCount,
+                    total: calcStats.leadCount,
                     sent: 0,
                     failed: 0,
-                    pending: stats.leadCount
+                    pending: calcStats.leadCount
                 }
             } as any);
 
@@ -602,11 +627,11 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
                         <div className="grid grid-cols-2 gap-4">
                             <div className="p-4 rounded-2xl bg-black border border-neutral-800 space-y-1">
                                 <span className="text-[10px] uppercase text-neutral-500 tracking-wider">Leads Totais</span>
-                                <p className="text-2xl font-semibold text-white">{stats.leadCount}</p>
+                                <p className="text-2xl font-semibold text-white">{calcStats.leadCount}</p>
                             </div>
                             <div className="p-4 rounded-2xl bg-black border border-neutral-800 space-y-1">
                                 <span className="text-[10px] uppercase text-neutral-500 tracking-wider">Instâncias</span>
-                                <p className="text-2xl font-semibold text-white">{stats.instanceCount}</p>
+                                <p className="text-2xl font-semibold text-white">{calcStats.instanceCount}</p>
                             </div>
                         </div>
 
@@ -615,8 +640,8 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
                             <div>
                                 <h4 className="text-sm font-semibold text-white">Pronto para o disparo</h4>
                                 <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                                    Temos <strong>{stats.leadCount} leads</strong>. Usando <strong>{stats.instanceCount} instâncias</strong>.
-                                    Cada conta enviará aproximadamente <strong>{stats.perInstance} e-mails</strong>.
+                                    Temos <strong>{calcStats.leadCount} leads</strong>. Usando <strong>{calcStats.instanceCount} instâncias</strong>.
+                                    Cada conta enviará aproximadamente <strong>{calcStats.perInstance} e-mails</strong>.
                                 </p>
                             </div>
                         </div>

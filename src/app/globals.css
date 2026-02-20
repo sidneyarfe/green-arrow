@@ -4,6 +4,7 @@
 /* GREEN ARROW — DESIGN SYSTEM v3             */
 /* Based on new Claude design                  */
 /* ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
 :root {
   --bg: #0d0d0f;
@@ -13,11 +14,10 @@
   --border: rgba(255, 255, 255, 0.07);
   --border-2: rgba(255, 255, 255, 0.12);
   --green: #00d26a;
-  --green-dim: rgba(0, 210, 106, 0.12);
+  --green-dim: rgba(0, 210, 106, 0.10);
   --green-glow: rgba(0, 210, 106, 0.22);
   --blue-dim: rgba(96, 165, 250, 0.10);
   --yellow-dim: rgba(251, 191, 36, 0.10);
-  --red: #f87171;
   --red-dim: rgba(248, 113, 113, 0.10);
   --text-1: #f0f0f2;
   --text-2: #8a8a96;
@@ -27,16 +27,6 @@
   --radius: 8px;
   --font: 'DM Sans', sans-serif;
   --mono: 'DM Mono', monospace;
-
-  /* Legacy compat */
-  --bg-background: var(--bg);
-  --bg-surface: var(--surface);
-  --bg-surface-hover: var(--surface-2);
-  --border-subtle: var(--border);
-  --text-primary: var(--text-1);
-  --text-secondary: var(--text-2);
-  --text-muted: var(--text-3);
-  --accent: var(--green);
   --accent-dim: var(--green-dim);
 }
 
