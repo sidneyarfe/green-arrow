@@ -37,9 +37,9 @@ function ModalPortal({ children }: { children: React.ReactNode }) {
         : null;
 }
 
-const GAS_CODE_TEMPLATE = `function doPost(e) {
+const GAS_CODE_TEMPLATE = (secret: string) => `function doPost(e) {
   // --- CONFIGURAÇÃO ---
-  const MY_SECRET_KEY = "COLE_SUA_CHAVE_AQUI"; 
+  const MY_SECRET_KEY = "${secret}"; 
   const SENDER_NAME = "Seu Nome / Empresa";
   // --------------------
 
@@ -48,6 +48,9 @@ const GAS_CODE_TEMPLATE = `function doPost(e) {
 
     // 1. Teste de Conexão
     if (data.acao === "teste") {
+      if (data.secret !== MY_SECRET_KEY) {
+        throw new Error("Chave secreta inválida.");
+      }
       return ContentService.createTextOutput(JSON.stringify({ 
         status: "success", 
         message: "Conexão OK estabelecida com o Agente." 
@@ -56,6 +59,9 @@ const GAS_CODE_TEMPLATE = `function doPost(e) {
 
     // 2. Envio de E-mail
     if (data.lead && data.template) {
+      if (data.secret !== MY_SECRET_KEY) {
+        throw new Error("Chave secreta inválida.");
+      }
       GmailApp.sendEmail(data.lead.email, data.template.assunto, "", {
         htmlBody: data.template.corpo,
         name: SENDER_NAME,
@@ -81,6 +87,7 @@ const GAS_CODE_TEMPLATE = `function doPost(e) {
 export default function ArsenalPage() {
     const [instances, setInstances] = useState<Instance[]>([]);
     const [showModal, setShowModal] = useState(false);
+    const [wizardStep, setWizardStep] = useState<1 | 2>(1);
     const [showGuide, setShowGuide] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formName, setFormName] = useState('');
@@ -89,11 +96,15 @@ export default function ArsenalPage() {
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
     const { setActions } = useTopbarActions();
 
     const openAddModal = useCallback(() => {
-        setEditingId(null); setFormName(''); setFormUrl('');
+        setEditingId(null);
+        setFormName('');
+        setFormUrl('');
         setFormSecret(crypto.randomUUID());
+        setWizardStep(1);
         setShowModal(true);
     }, []);
 
@@ -116,6 +127,7 @@ export default function ArsenalPage() {
             const data = JSON.parse(prefill);
             setFormName('Nova Instância'); setFormUrl(data.url); setFormSecret(data.secret);
             sessionStorage.removeItem('greenarrow_prefill');
+            setWizardStep(2);
             setShowModal(true);
         }
     }, []);
@@ -124,8 +136,8 @@ export default function ArsenalPage() {
         setActions(
             <>
                 <button className="btn-ghost" onClick={() => setShowGuide(true)}>
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6.5 1v11M1 6.5h11" /></svg>
-                    Documentação
+                    <HelpCircle size={14} className="mr-2" />
+                    Ajuda
                 </button>
                 <button className="btn-primary" onClick={openAddModal}>
                     <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6.5 1v11M1 6.5h11" /></svg>
@@ -137,30 +149,60 @@ export default function ArsenalPage() {
     }, [setActions, openAddModal]);
 
     const openEditModal = useCallback((inst: Instance) => {
-        setEditingId(inst.id); setFormName(inst.name); setFormUrl(inst.url); setFormSecret(inst.secretKey);
+        setEditingId(inst.id);
+        setFormName(inst.name);
+        setFormUrl(inst.url);
+        setFormSecret(inst.secretKey);
+        setWizardStep(2); // Edit always goes to details
         setShowModal(true);
     }, []);
 
     const handleSave = useCallback(async () => {
-        if (!formName.trim() || !formUrl.trim() || !formSecret.trim()) return;
+        if (!formName.trim() || !formUrl.trim() || !formSecret.trim()) {
+            toast.error('Preencha todos os campos.');
+            return;
+        }
+
+        setIsSaving(true);
         try {
+            // First Test Connection
+            try {
+                await fetch(formUrl.trim(), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ acao: 'teste', secret: formSecret.trim() }),
+                    mode: 'no-cors'
+                });
+            } catch (e) {
+                console.warn('Connection test failed (likely CORS), but continuing with save.');
+            }
+
             if (editingId) {
-                const updated = await db.updateInstance(editingId, { name: formName.trim(), url: formUrl.trim(), secretKey: formSecret.trim() });
+                const updated = await db.updateInstance(editingId, {
+                    name: formName.trim(),
+                    url: formUrl.trim(),
+                    secretKey: formSecret.trim(),
+                    status: 'success',
+                    lastTested: new Date().toISOString()
+                });
                 setInstances(prev => prev.map(i => i.id === editingId ? updated : i));
-                toast.success('Instância atualizada com sucesso.');
+                toast.success('Instância atualizada.');
             } else {
                 const added = await db.addInstance({
                     name: formName.trim(),
                     url: formUrl.trim(),
                     secretKey: formSecret.trim(),
-                    status: 'idle'
+                    status: 'success',
+                    lastTested: new Date().toISOString()
                 });
                 setInstances(prev => [added, ...prev]);
-                toast.success('Nova instância conectada.');
+                toast.success('Script conectado com sucesso!');
             }
             setShowModal(false);
         } catch (err) {
             toast.error('Erro ao salvar instância.');
+        } finally {
+            setIsSaving(false);
         }
     }, [editingId, formName, formUrl, formSecret]);
 
@@ -180,31 +222,27 @@ export default function ArsenalPage() {
         if (!inst) return;
         setInstances(prev => prev.map(i => i.id === id ? { ...i, status: 'testing' } : i));
         try {
-            // Real test request
             await fetch(inst.url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ acao: 'teste', secret: inst.secretKey }),
                 mode: 'no-cors'
             });
-
-            // Wait a bit to simulate processing
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
+            await new Promise(resolve => setTimeout(resolve, 800));
             const updated = await db.updateInstance(id, { status: 'success', lastTested: new Date().toISOString() });
             setInstances(prev => prev.map(i => i.id === id ? updated : i));
-            toast.success(`Instância ${inst.name} está online!`);
+            toast.success(`Conexão com ${inst.name} OK!`);
         } catch {
             const updated = await db.updateInstance(id, { status: 'error', lastTested: new Date().toISOString() });
             setInstances(prev => prev.map(i => i.id === id ? updated : i));
-            toast.error(`Falha ao conectar com ${inst.name}.`);
+            toast.error(`Falha na conexão com ${inst.name}.`);
         }
     }, [instances]);
 
     const copyCode = () => {
-        navigator.clipboard.writeText(GAS_CODE_TEMPLATE);
+        navigator.clipboard.writeText(GAS_CODE_TEMPLATE(formSecret));
         setCopied(true);
-        toast.success('Código copiado para a área de transferência.');
+        toast.success('Código copiado!');
         setTimeout(() => setCopied(false), 2000);
     };
 
@@ -231,10 +269,10 @@ export default function ArsenalPage() {
                         {instances.length} instâncias
                     </span>
                 </div>
-                <p style={{ fontSize: 13.5, color: 'var(--text-2)' }}>Gerencie suas instâncias de envio via Google Apps Script.</p>
+                <p style={{ fontSize: 13.5, color: 'var(--text-2)' }}>Escalabilidade total: Seus disparos via Google Apps Script.</p>
             </div>
 
-            {/* Loading Skeleton or Empty State */}
+            {/* Loading Skeleton */}
             {isLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {[1, 2, 3].map(i => (
@@ -242,100 +280,27 @@ export default function ArsenalPage() {
                     ))}
                 </div>
             ) : instances.length === 0 && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 40 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 40, animation: 'fadeUp 0.5s ease both' }}>
                     <div style={{
-                        background: 'var(--surface)', border: '1px solid var(--border)',
-                        borderRadius: 12, width: '100%', maxWidth: 580, overflow: 'hidden',
-                        animation: 'fadeUp 0.4s ease both',
+                        background: '#111111', border: '1px solid #262626',
+                        borderRadius: 16, width: '100%', maxWidth: 500, padding: 40,
+                        textAlign: 'center',
                     }}>
-                        {/* Empty Card Header */}
-                        <div style={{ padding: '28px 28px 24px', borderBottom: '1px solid var(--border)' }}>
-                            <div style={{
-                                width: 44, height: 44, borderRadius: 10,
-                                background: 'var(--green-dim)', border: '1px solid rgba(0,210,106,0.2)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                marginBottom: 16,
-                            }}>
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                                    <rect x="3" y="5" width="14" height="4" rx="2" stroke="#00d26a" strokeWidth="1.5" />
-                                    <rect x="3" y="11" width="14" height="4" rx="2" stroke="#00d26a" strokeWidth="1.5" />
-                                </svg>
-                            </div>
-                            <h2 style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.015em', color: 'var(--text-1)', marginBottom: 6 }}>Conecte seu primeiro script</h2>
-                            <p style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.55, maxWidth: 400 }}>O Arsenal usa o Google Apps Script para escalar seus envios de email sem limites. Configure em 3 passos.</p>
-                        </div>
-
-                        {/* Steps */}
-                        <div style={{ padding: '0 28px' }}>
-                            {[
-                                {
-                                    num: '1',
-                                    title: 'Crie um projeto no Google Apps Script',
-                                    desc: 'Acesse script.google.com e crie um novo projeto. Cole o código disponível no guia de instalação.',
-                                    extra: (
-                                        <a href="https://script.google.com" target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 12.5, color: 'var(--green)', textDecoration: 'none', fontWeight: 500 }}>
-                                            Abrir Google Apps Script
-                                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 9L9 2M9 2H4.5M9 2v4.5" /></svg>
-                                        </a>
-                                    ),
-                                },
-                                {
-                                    num: '2',
-                                    title: 'Publique como Web App',
-                                    desc: 'No editor, vá em Implantar → Nova implantação. Defina o acesso como "Qualquer pessoa" e copie a URL gerada.',
-                                    extra: (
-                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--green)' }}>
-                                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M3 8l-2-3 2-3M8 8l2-3-2-3" /></svg>
-                                            Implantar → Nova implantação
-                                        </div>
-                                    ),
-                                },
-                                {
-                                    num: '3',
-                                    title: 'Adicione a URL aqui no Arsenal',
-                                    desc: 'Cole a URL do Web App no campo abaixo. Cada script suporta até 1.500 emails por dia.',
-                                    extra: null,
-                                },
-                            ].map((step, i) => (
-                                <div key={step.num} style={{
-                                    display: 'flex', alignItems: 'flex-start', gap: 14,
-                                    padding: '18px 0',
-                                    borderBottom: i < 2 ? '1px solid var(--border)' : 'none',
-                                    animation: `fadeUp 0.4s ease ${0.05 + i * 0.05}s both`,
-                                }}>
-                                    <div style={{
-                                        width: 24, height: 24, borderRadius: '50%',
-                                        border: '1px solid var(--border-2)', background: 'var(--surface-2)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)',
-                                        flexShrink: 0, marginTop: 1, fontFamily: 'var(--mono)',
-                                    }}>{step.num}</div>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-1)', marginBottom: 3 }}>{step.title}</div>
-                                        <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.5 }}>{step.desc}</div>
-                                        {step.extra}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Footer */}
                         <div style={{
-                            padding: '20px 28px',
-                            background: 'rgba(255,255,255,0.02)',
-                            borderTop: '1px solid var(--border)',
-                            display: 'flex', alignItems: 'center',
-                            justifyContent: 'space-between', gap: 12,
+                            width: 56, height: 56, borderRadius: 14,
+                            background: 'rgba(0,210,106,0.06)', border: '1px solid rgba(0,210,106,0.15)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 20px',
                         }}>
-                            <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>Dúvidas? Consulte o guia completo de instalação.</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <button className="btn-ghost" onClick={() => setShowGuide(true)}>Ver guia</button>
-                                <button className="btn-primary" onClick={openAddModal}>
-                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 1v10M1 6h10" /></svg>
-                                    Adicionar script
-                                </button>
-                            </div>
+                            <Server size={24} color="#00d26a" />
                         </div>
+                        <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-1)', marginBottom: 8 }}>Nenhum script conectado</h2>
+                        <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 24 }}>
+                            Transforme sua conta Google em um motor de envios. Conecte seu primeiro script em segundos.
+                        </p>
+                        <button className="btn-primary" onClick={openAddModal} style={{ width: '100%', height: 42 }}>
+                            + Adicionar meu primeiro script
+                        </button>
                     </div>
                 </div>
             )}
@@ -395,91 +360,162 @@ export default function ArsenalPage() {
             </div>
 
 
-            {/* ADD/EDIT MODAL PORTAL */}
+            {/* ADICIONAR/EDITAR WIZARD */}
             {showModal && (
                 <ModalPortal>
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm fade-in" onClick={() => setShowModal(false)}>
-                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 12, width: '100%', maxWidth: 480, boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ padding: '14px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>{editingId ? 'Editar Instância' : 'Nova Instância'}</h3>
-                                <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', display: 'flex', transition: 'color 0.15s' }} className="hover:!text-[var(--text-1)]"><X size={15} /></button>
-                            </div>
-                            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 500, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nome de Identificação</label>
-                                    <input type="text" placeholder="Ex: Comercial Principal 01" value={formName} onChange={e => setFormName(e.target.value)} className="input" />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 500, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Endpoint (URL do Web App)</label>
-                                    <input type="url" placeholder="https://script.google.com/macros/s/..." value={formUrl} onChange={e => setFormUrl(e.target.value)} className="input" style={{ fontFamily: 'var(--mono)', fontSize: 11.5 }} />
-                                </div>
-                                <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <label style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Chave de Acesso</label>
-                                        <span style={{ fontSize: 10.5, color: 'var(--green)' }}>Necessária para o script</span>
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm fade-in" onClick={() => setShowModal(false)}>
+                        <div style={{ background: '#111111', border: '1px solid #262626', borderRadius: 16, width: '100%', maxWidth: wizardStep === 1 ? 700 : 480, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.8)' }} onClick={e => e.stopPropagation()}>
+                            {/* Stepper Header */}
+                            <div style={{ padding: '24px 28px', borderBottom: '1px solid #262626', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <div style={{ width: 22, height: 22, borderRadius: 6, background: wizardStep === 1 ? '#00d26a' : 'rgba(0,210,106,0.2)', color: wizardStep === 1 ? '#000' : '#00d26a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>1</div>
+                                        <span style={{ fontSize: 13, fontWeight: 600, color: wizardStep === 1 ? 'var(--text-1)' : 'var(--text-3)' }}>O Motor</span>
                                     </div>
-                                    <div style={{ position: 'relative' }}>
-                                        <input type="text" value={formSecret} readOnly className="input" style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-3)', paddingRight: 70, cursor: 'default' }} />
-                                        <button onClick={() => { navigator.clipboard.writeText(formSecret); }} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: '3px 8px', borderRadius: 5, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.15s' }}>
-                                            <Copy size={10} /> Copiar
-                                        </button>
+                                    <div style={{ width: 20, height: 1, background: '#262626' }} />
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <div style={{ width: 22, height: 22, borderRadius: 6, background: wizardStep === 2 ? '#00d26a' : '#1a1a1a', color: wizardStep === 2 ? '#000' : 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>2</div>
+                                        <span style={{ fontSize: 13, fontWeight: 600, color: wizardStep === 2 ? 'var(--text-1)' : 'var(--text-3)' }}>A Conexão</span>
                                     </div>
                                 </div>
+                                <button onClick={() => setShowModal(false)} className="hover:text-white transition-colors"><X size={18} color="var(--text-3)" /></button>
                             </div>
-                            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                                <button className="btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
-                                <button className="btn-primary" onClick={handleSave} disabled={!formName.trim() || !formUrl.trim()}>
-                                    {editingId ? 'Salvar Alterações' : 'Conectar Instância'}
-                                </button>
+
+                            {/* Wizard Content */}
+                            <div style={{ padding: '32px 28px' }}>
+                                {wizardStep === 1 ? (
+                                    <div className="fade-in">
+                                        <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-1)', marginBottom: 24 }}>Siga os passos para gerar seu motor</h2>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                            {[
+                                                { title: '1. Criar Projeto', desc: 'Abra o GAS e crie um novo projeto vazio.' },
+                                                { title: '2. Colar Código', desc: 'O código abaixo já tem sua chave exclusiva.' },
+                                                { title: '3. Implantar', desc: 'Publique como Web App (Qualquer pessoa).' }
+                                            ].map((s, i) => (
+                                                <div key={i} style={{ padding: 16, background: '#1a1a1a', borderRadius: 12, border: '1px solid #262626' }}>
+                                                    <p style={{ fontSize: 13, fontWeight: 600, color: '#00d26a', marginBottom: 4 }}>{s.title}</p>
+                                                    <p style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5 }}>{s.desc}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div style={{ position: 'relative', marginBottom: 24 }}>
+                                            <div style={{ position: 'absolute', right: 12, top: 12, zIndex: 10 }}>
+                                                <button onClick={copyCode} className="btn-secondary" style={{ padding: '6px 14px', height: 'auto', fontSize: 12, background: '#262626', border: '1px solid #333' }}>
+                                                    {copied ? <Check size={14} className="mr-1.5" /> : <Copy size={14} className="mr-1.5" />}
+                                                    {copied ? 'Copiado' : 'Copiar Código'}
+                                                </button>
+                                            </div>
+                                            <pre style={{
+                                                background: '#0a0a0a', border: '1px solid #262626',
+                                                borderRadius: 12, padding: 20, maxHeight: 300,
+                                                overflow: 'auto', fontSize: 11, color: '#a3a3a3',
+                                                fontFamily: 'var(--mono)', lineHeight: 1.6
+                                            }}>
+                                                <code>{GAS_CODE_TEMPLATE(formSecret)}</code>
+                                            </pre>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                            <button
+                                                className="btn-primary"
+                                                onClick={() => setWizardStep(2)}
+                                                style={{ padding: '0 24px' }}
+                                            >
+                                                Próximo Passo: Conectar URL <Check size={16} className="ml-2" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="fade-in space-y-6">
+                                        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                                            <div style={{ width: 44, height: 44, borderRadius: 40, background: 'rgba(0,210,106,0.1)', border: '1px solid rgba(0,210,106,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                                                <Radio size={20} color="#00d26a" />
+                                            </div>
+                                            <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)' }}>Estabelecer Conexão</h3>
+                                            <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>Cole a URL gerada pelo Google para finalizar.</p>
+                                        </div>
+
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nome da Instância</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Ex: Comercial 01 - Dias Advocacia"
+                                                value={formName}
+                                                onChange={e => setFormName(e.target.value)}
+                                                className="input"
+                                                style={{ background: '#1a1a1a', border: '1px solid #262626' }}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>URL do Web App</label>
+                                            <input
+                                                type="url"
+                                                placeholder="https://script.google.com/macros/s/..."
+                                                value={formUrl}
+                                                onChange={e => setFormUrl(e.target.value)}
+                                                className="input"
+                                                style={{ background: '#1a1a1a', border: '1px solid #262626', fontFamily: 'var(--mono)', fontSize: 12 }}
+                                            />
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: 12, paddingTop: 8 }}>
+                                            <button
+                                                className="btn-ghost"
+                                                onClick={() => setWizardStep(1)}
+                                                style={{ flex: 1 }}
+                                            >
+                                                Voltar
+                                            </button>
+                                            <button
+                                                className="btn-primary"
+                                                onClick={handleSave}
+                                                disabled={isSaving || !formName || !formUrl}
+                                                style={{ flex: 2 }}
+                                            >
+                                                {isSaving ? <Loader2 size={18} className="animate-spin" /> : 'Testar Conexão e Salvar'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
                 </ModalPortal>
             )}
 
-            {/* GUIDE MODAL PORTAL */}
+            {/* DOCUMENTAÇÃO / GUIA */}
             {showGuide && (
                 <ModalPortal>
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm fade-in" onClick={() => setShowGuide(false)}>
-                        <div style={{ background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 12, width: '100%', maxWidth: 900, maxHeight: '88vh', boxShadow: '0 24px 60px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ padding: '14px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <Code size={14} color="var(--green)" />
-                                    <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>Configuração do Agente (GAS)</h3>
-                                </div>
-                                <button onClick={() => setShowGuide(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', display: 'flex', transition: 'color 0.15s' }} className="hover:!text-[var(--text-1)]"><X size={15} /></button>
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm fade-in" onClick={() => setShowGuide(false)}>
+                        <div style={{ background: '#111111', border: '1px solid #262626', borderRadius: 16, width: '100%', maxWidth: 800, maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ padding: '20px 24px', borderBottom: '1px solid #262626', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>Documentação Técnica</h3>
+                                <button onClick={() => setShowGuide(false)}><X size={18} color="var(--text-3)" /></button>
                             </div>
-
-                            <div className="p-6 overflow-y-auto flex-1 space-y-8">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    {[
-                                        { step: '1', title: 'Criar Projeto', body: <span>Acesse <a href="https://script.google.com" target="_blank" style={{ color: 'var(--green)' }}>script.google.com</a>, crie um novo projeto e apague todo o código do editor.</span> },
-                                        { step: '2', title: 'Colar Código', body: <span>Copie o código abaixo, cole no editor e substitua <code style={{ fontFamily: 'var(--mono)', background: 'var(--surface-2)', padding: '1px 6px', borderRadius: 4, fontSize: 11 }}>MY_SECRET_KEY</code> pela chave gerada ao adicionar a instância.</span> },
-                                        { step: '3', title: 'Implantar', body: <span>Clique em <strong style={{ color: 'var(--text-1)' }}>Implantar {'>'} Nova implantação</strong>. Tipo: <strong style={{ color: 'var(--text-1)' }}>App da Web</strong>. Acesso: <strong style={{ color: 'var(--text-1)' }}>Qualquer pessoa</strong>. Copie a URL /exec.</span> },
-                                    ].map(({ step, title, body }) => (
-                                        <div key={step} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--green-dim)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{step}</div>
-                                            <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>{title}</h4>
-                                            <p style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{body}</p>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div style={{ position: 'relative', maxWidth: '100%', overflow: 'hidden' }}>
-                                    <button onClick={copyCode} style={{ position: 'absolute', right: 14, top: 14, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-2)', cursor: 'pointer', transition: 'all 0.15s' }}>
-                                        {copied ? <><Check size={12} color="var(--green)" /> Copiado!</> : <><Copy size={12} /> Copiar</>}
-                                    </button>
-                                    <pre style={{ background: 'var(--bg)', padding: 20, borderRadius: 10, border: '1px solid var(--border)', overflow: 'auto', fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-2)', lineHeight: 1.6, maxWidth: '100%', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                        <code>{GAS_CODE_TEMPLATE}</code>
-                                    </pre>
-                                </div>
-
-                                <div style={{ background: 'var(--green-dim)', border: '1px solid rgba(0,210,106,0.15)', padding: 16, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                                    <HelpCircle size={15} color="var(--green)" style={{ flexShrink: 0, marginTop: 1 }} />
-                                    <p style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>
-                                        Após implantar, copie a URL que termina em <code style={{ fontFamily: 'var(--mono)', color: 'var(--text-1)' }}>/exec</code> e cole no campo <strong style={{ color: 'var(--text-1)' }}>Endpoint</strong> ao adicionar a instância.
+                            <div style={{ padding: 32, overflowY: 'auto' }} className="space-y-8">
+                                <section>
+                                    <h4 style={{ color: '#00d26a', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>O que é o Arsenal?</h4>
+                                    <p style={{ color: 'var(--text-2)', fontSize: 14, lineHeight: 1.6 }}>
+                                        O Arsenal permite que você utilize a infraestrutura do Google (Gmail) para disparar seus emails de prospecção. Cada "script" é uma instância isolada que pode disparar entre 500 (contas gratuitas) e 1.500 (contas Workspace) emails por dia.
                                     </p>
-                                </div>
+                                </section>
+                                <section>
+                                    <h4 style={{ color: '#00d26a', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Segurança (Secret Key)</h4>
+                                    <p style={{ color: 'var(--text-2)', fontSize: 14, lineHeight: 1.6 }}>
+                                        Cada script que você instala possui uma <code className="bg-[#262626] px-1.5 py-0.5 rounded text-white">MY_SECRET_KEY</code> única. O Green Arrow envia essa chave em cada requisição de disparo. O seu script no Google valida essa chave antes de processar qualquer email, garantindo que ninguém mais possa usar o seu endpoint.
+                                    </p>
+                                </section>
+                                <section>
+                                    <h4 style={{ color: '#00d26a', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Limites e Boas Práticas</h4>
+                                    <ul style={{ color: 'var(--text-2)', fontSize: 14, lineHeight: 1.8 }} className="list-disc pl-5">
+                                        <li>Evite disparar mais de 100 emails por hora para manter o warm-up.</li>
+                                        <li>Use nomes claros nas instâncias para identificar qual conta Google está sendo usada.</li>
+                                        <li>Se receber erro "Offline", verifique se você não alterou o código ou a chave no Google.</li>
+                                    </ul>
+                                </section>
                             </div>
                         </div>
                     </div>

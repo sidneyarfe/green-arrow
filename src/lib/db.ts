@@ -12,19 +12,28 @@ export const db = {
             .order('created_at', { ascending: false })
 
         if (error) throw error
-        return data as any[] as Instance[]
+        return (data || []).map((d: any) => ({
+            ...d,
+            createdAt: d.created_at
+        })) as Instance[]
     },
 
-    async addInstance(instance: Omit<Instance, 'id'>): Promise<Instance> {
+    async addInstance(instance: Omit<Instance, 'id' | 'createdAt'>): Promise<Instance> {
         const { data: { user } } = await supabase.auth.getUser()
         const { data, error } = await supabase
             .from('instances')
-            .insert([{ ...instance, user_id: user?.id }])
+            .insert([{
+                name: instance.name,
+                url: instance.url,
+                secret_key: (instance as any).secretKey,
+                status: instance.status,
+                user_id: user?.id
+            }])
             .select()
             .single()
 
         if (error) throw error
-        return data as any as Instance
+        return { ...data, secretKey: data.secret_key, createdAt: data.created_at } as Instance
     },
 
     async updateInstance(id: string, updates: Partial<Instance>): Promise<Instance> {
@@ -36,12 +45,73 @@ export const db = {
             .single()
 
         if (error) throw error
-        return data as any as Instance
+        return { ...data, secretKey: data.secret_key, createdAt: data.created_at } as Instance
     },
 
     async deleteInstance(id: string): Promise<void> {
         const { error } = await supabase
             .from('instances')
+            .delete()
+            .eq('id', id)
+
+        if (error) throw error
+    },
+
+    // --- LISTS ---
+    async getLists(): Promise<LeadList[]> {
+        const { data, error } = await supabase
+            .from('lists')
+            .select('*, leads(*)')
+            .order('created_at', { ascending: false })
+
+        if (error) throw error
+        return (data || []).map((d: any) => ({
+            ...d,
+            createdAt: d.created_at,
+            leads: (d.leads || []).map((l: any) => ({
+                nome: l.nome,
+                email: l.email,
+                ...(l.extra_data || {})
+            }))
+        })) as LeadList[]
+    },
+
+    async addList(name: string, leads: Lead[]): Promise<LeadList> {
+        const { data: { user } } = await supabase.auth.getUser()
+
+        // 1. Create list
+        const { data: listData, error: listError } = await supabase
+            .from('lists')
+            .insert([{ name, user_id: user?.id }])
+            .select()
+            .single()
+
+        if (listError) throw listError
+
+        // 2. Add leads
+        const leadsData = leads.map(l => {
+            const { nome, email, ...extra_data } = l
+            return {
+                list_id: listData.id,
+                nome,
+                email,
+                extra_data,
+                user_id: user?.id
+            }
+        })
+
+        const { error: leadsError } = await supabase
+            .from('leads')
+            .insert(leadsData)
+
+        if (leadsError) throw leadsError
+
+        return { ...listData, createdAt: listData.created_at, leads } as LeadList
+    },
+
+    async deleteList(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('lists')
             .delete()
             .eq('id', id)
 
@@ -56,7 +126,10 @@ export const db = {
             .order('created_at', { ascending: false })
 
         if (error) throw error
-        return data as any[] as EmailTemplate[]
+        return (data || []).map((d: any) => ({
+            ...d,
+            createdAt: d.created_at
+        })) as EmailTemplate[]
     },
 
     async addTemplate(template: Omit<EmailTemplate, 'id' | 'createdAt'>): Promise<EmailTemplate> {
@@ -73,7 +146,7 @@ export const db = {
             .single()
 
         if (error) throw error
-        return data as any as EmailTemplate
+        return { ...data, createdAt: data.created_at } as EmailTemplate
     },
 
     async updateTemplate(id: string, updates: Partial<EmailTemplate>): Promise<EmailTemplate> {
@@ -85,7 +158,7 @@ export const db = {
             .single()
 
         if (error) throw error
-        return data as any as EmailTemplate
+        return { ...data, createdAt: data.created_at } as EmailTemplate
     },
 
     async deleteTemplate(id: string): Promise<void> {
@@ -97,55 +170,18 @@ export const db = {
         if (error) throw error
     },
 
-    // --- LISTS & LEADS ---
-    async getLists(): Promise<LeadList[]> {
-        const { data: lists, error: listError } = await supabase
-            .from('lists')
-            .select('*, leads(*)')
-            .order('created_at', { ascending: false })
-
-        if (listError) throw listError
-        return lists as any[] as LeadList[]
-    },
-
-    async addList(name: string, leads: Lead[]): Promise<LeadList> {
-        const { data: { user } } = await supabase.auth.getUser()
-
-        // 1. Create List
-        const { data: list, error: listError } = await supabase
-            .from('lists')
-            .insert([{ name, user_id: user?.id }])
-            .select()
-            .single()
-
-        if (listError) throw listError
-
-        // 2. Create Leads
-        if (leads.length > 0) {
-            const leadsToInsert = leads.map(l => ({
-                list_id: list.id,
-                nome: l.nome,
-                email: l.email,
-                extra_data: l // Store full object in extra_data if needed
-            }))
-
-            const { error: leadsError } = await supabase
-                .from('leads')
-                .insert(leadsToInsert)
-
-            if (leadsError) throw leadsError
-        }
-
-        return { ...list, leads } as any as LeadList
-    },
-
-    async deleteList(id: string): Promise<void> {
-        const { error } = await supabase
-            .from('lists')
-            .delete()
-            .eq('id', id)
+    async getLeadsByListId(listId: string): Promise<Lead[]> {
+        const { data, error } = await supabase
+            .from('leads')
+            .select('*')
+            .eq('list_id', listId)
 
         if (error) throw error
+        return (data || []).map((d: { nome: string; email: string; extra_data?: Record<string, string> | null }) => ({
+            nome: d.nome,
+            email: d.email,
+            ...((d.extra_data && typeof d.extra_data === 'object') ? d.extra_data as Record<string, string> : {})
+        }))
     },
 
     // --- CAMPAIGNS ---
@@ -156,7 +192,10 @@ export const db = {
             .order('created_at', { ascending: false })
 
         if (error) throw error
-        return data as any[] as Campaign[]
+        return (data || []).map((d: any) => ({
+            ...d,
+            createdAt: d.created_at
+        })) as Campaign[]
     },
 
     async addCampaign(campaign: Omit<Campaign, 'id' | 'createdAt'>): Promise<Campaign> {
@@ -174,7 +213,7 @@ export const db = {
             .single()
 
         if (error) throw error
-        return data as any as Campaign
+        return { ...data, createdAt: data.created_at } as Campaign
     },
 
     async updateCampaign(id: string, updates: Partial<Campaign>): Promise<Campaign> {
@@ -186,7 +225,7 @@ export const db = {
             .single()
 
         if (error) throw error
-        return data as any as Campaign
+        return { ...data, createdAt: data.created_at } as Campaign
     },
 
     async deleteCampaign(id: string): Promise<void> {

@@ -41,7 +41,7 @@ export interface Campaign {
   id: string;
   name: string;
   config: CampaignConfig;
-  status: 'draft' | 'running' | 'paused' | 'done';
+  status: 'draft' | 'running' | 'paused' | 'completed' | 'error';
   createdAt: string;
   stats: {
     total: number;
