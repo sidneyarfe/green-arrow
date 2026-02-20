@@ -29,43 +29,36 @@ import { toast } from 'sonner';
 
 // --- COMPONENTS ---
 
-function ProgressRing({ progress, size = 64, strokeWidth = 4 }: { progress: number; size?: number; strokeWidth?: number }) {
-    const radius = (size - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (progress / 100) * circumference;
+function StatusBadge({ status }: { status: Campaign['status'] }) {
+    const config = {
+        running: { label: 'Ativa', color: 'var(--green)', bg: 'var(--green-dim)', border: 'rgba(0,210,106,0.2)' },
+        paused: { label: 'Pausada', color: '#fbbf24', bg: 'var(--yellow-dim)', border: 'rgba(251,191,36,0.2)' },
+        completed: { label: 'Concluída', color: '#60a5fa', bg: 'var(--blue-dim)', border: 'rgba(96,165,250,0.2)' },
+        draft: { label: 'Rascunho', color: 'var(--text-3)', bg: 'var(--surface-3)', border: 'var(--border)' },
+        error: { label: 'Erro', color: '#f87171', bg: 'var(--red-dim)', border: 'rgba(248,113,113,0.2)' },
+    }[status] || { label: status, color: 'var(--text-3)', bg: 'var(--surface-3)', border: 'var(--border)' };
 
     return (
-        <svg width={size} height={size} className="transform -rotate-90">
-            <circle
-                cx={size / 2} cy={size / 2} r={radius}
-                fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={strokeWidth}
+        <span
+            className="inline-flex items-center gap-1.5 px-[9px] py-[3px] rounded-full text-[11.5px] font-medium border"
+            style={{ backgroundColor: config.bg, color: config.color, borderColor: config.border }}
+        >
+            <div
+                className="w-[5px] h-[5px] rounded-full shrink-0"
+                style={{ backgroundColor: config.color, boxShadow: status === 'running' ? `0 0 4px ${config.color}` : 'none' }}
             />
-            <circle
-                cx={size / 2} cy={size / 2} r={radius}
-                fill="none" stroke="var(--green)" strokeWidth={strokeWidth}
-                strokeDasharray={circumference}
-                strokeDashoffset={offset}
-                strokeLinecap="round"
-                className="transition-all duration-500 ease-out"
-            />
-        </svg>
+            {config.label}
+        </span>
     );
 }
 
-function StatusBadge({ status }: { status: Campaign['status'] }) {
-    const config = {
-        running: { label: 'Ativa', color: 'var(--green)', bg: 'rgba(0,210,106,0.1)' },
-        paused: { label: 'Pausada', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
-        completed: { label: 'Concluída', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)' },
-        draft: { label: 'Rascunho', color: 'var(--text-3)', bg: 'var(--surface-3)' },
-        error: { label: 'Erro', color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
-    }[status] || { label: status, color: 'var(--text-3)', bg: 'var(--surface-3)' };
-
+function SummaryCard({ label, value, sub, delay = 0, color }: { label: string, value: React.ReactNode, sub: string, delay?: number, color?: string }) {
     return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border border-white/5" style={{ backgroundColor: config.bg, color: config.color }}>
-            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: config.color, boxShadow: status === 'running' ? `0 0 6px ${config.color}` : 'none' }} />
-            {config.label}
-        </span>
+        <div className="bg-[#141416] border border-white/5 rounded-[10px] p-4 px-5 fade-up" style={{ animationDelay: `${delay}s` }}>
+            <div className="text-[11.5px] text-[#52525c] uppercase tracking-wider mb-2">{label}</div>
+            <div className="text-2xl font-semibold text-[#f0f0f2] font-mono leading-tight mb-1" style={{ color }}>{value}</div>
+            <div className="text-[11.5px] text-[#52525c]">{sub}</div>
+        </div>
     );
 }
 
@@ -142,240 +135,242 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
     onNew: () => void;
     onOpen: (c: Campaign) => void;
 }) {
-    const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<'all' | 'running' | 'paused' | 'completed' | 'draft'>('all');
-    const [showEmpty, setShowEmpty] = useState(false);
+    const [search, setSearch] = useState('');
 
-    const filtered = campaigns.filter(c => {
-        const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+    const filteredCampaigns = campaigns.filter(c => {
         const matchesFilter = filter === 'all' || c.status === filter;
-        return matchesSearch && matchesFilter;
+        const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase());
+        return matchesFilter && matchesSearch;
     });
 
     const stats = {
         total: campaigns.length,
         active: campaigns.filter(c => c.status === 'running').length,
         sent: campaigns.reduce((acc, c) => acc + (c.stats?.sent || 0), 0),
-        avgRate: campaigns.length > 0
-            ? (campaigns.reduce((acc, c) => {
-                const deliveryRate = (c.stats?.total && c.stats.total > 0) ? (c.stats.sent / c.stats.total) * 100 : 0;
-                return acc + deliveryRate;
-            }, 0) / campaigns.length).toFixed(1)
-            : '0'
+        avgDelivery: campaigns.length > 0
+            ? (campaigns.reduce((acc, c) => acc + (c.stats?.total > 0 ? (c.stats.sent / c.stats.total) : 0), 0) / campaigns.length * 100).toFixed(1)
+            : '0.0'
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (!confirm('Tem certeza que deseja excluir esta campanha?')) return;
-        try {
-            await db.deleteCampaign(id);
-            toast.success('Campanha excluída!');
-            window.location.reload();
-        } catch (err) {
-            toast.error('Erro ao excluir campanha');
+        if (confirm('Tem certeza que deseja excluir esta campanha?')) {
+            try {
+                await db.deleteCampaign(id);
+                toast.success('Campanha excluída');
+                window.location.reload();
+            } catch (err) {
+                toast.error('Erro ao excluir campanha');
+            }
         }
     };
 
-    const StatusBadge = ({ status }: { status: Campaign['status'] }) => {
-        const config = {
-            running: { label: 'Ativa', class: 'ativa' },
-            paused: { label: 'Pausada', class: 'pausada' },
-            completed: { label: 'Concluída', class: 'concluida' },
-            draft: { label: 'Rascunho', class: 'rascunho' },
-            error: { label: 'Erro', class: 'rascunho' }
-        }[status] || { label: status, class: 'rascunho' };
-
-        return (
-            <span className={`badge ${config.class}`}>
-                <span className="badge-dot"></span>
-                {config.label}
-            </span>
-        );
-    };
-
     return (
-        <div className={`page ${showEmpty ? 'show-empty' : ''}`}>
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-                <div>
-                    <h1 className="page-title">Campanhas</h1>
-                    <p className="page-desc">Gerencie e monitore seus disparos em tempo real.</p>
+        <div className="space-y-6">
+            {/* STICKY TOPBAR */}
+            <div className="h-[56px] sticky top-0 bg-[#0d0d0f] z-50 flex items-center justify-between px-8 -mx-8 border-b border-white/5">
+                <div className="flex items-center gap-2 text-[13px] text-[#52525c]">
+                    <span>Green Arrow</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                    <b className="text-[#f0f0f2] font-medium">Campanhas</b>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button className="btn-ghost" onClick={() => setShowEmpty(!showEmpty)}>
-                        <Activity className="w-3.5 h-3.5" />
+                    <button className="btn-ghost" onClick={() => document.body.classList.toggle('show-empty')}>
+                        <Plus className="w-3.5 h-3.5 rotate-45" />
                         Alternar preview
                     </button>
-                    <button className="btn-primary" onClick={onNew}>
-                        <Plus className="w-3.5 h-3.5" />
+                    <button onClick={onNew} className="btn-primary">
+                        <Plus className="w-3.5 h-3.5" strokeWidth={3} />
                         Nova campanha
                     </button>
                 </div>
             </div>
 
-            {/* Summary Strip */}
-            <div className="summary-strip">
-                <div className="summary-card">
-                    <div className="summary-label">Total</div>
-                    <div className="summary-value">{stats.total}</div>
-                    <div className="summary-sub">campanhas criadas</div>
-                </div>
-                <div className="summary-card">
-                    <div className="summary-label">Ativas agora</div>
-                    <div className="summary-value" style={{ color: 'var(--green)' }}>{stats.active}</div>
-                    <div className="summary-sub">em disparo</div>
-                </div>
-                <div className="summary-card">
-                    <div className="summary-label">Emails enviados</div>
-                    <div className="summary-value">{(stats.sent / 1000).toFixed(1)}k</div>
-                    <div className="summary-sub">histórico total</div>
-                </div>
-                <div className="summary-card">
-                    <div className="summary-label">Taxa média entrega</div>
-                    <div className="summary-value">{stats.avgRate}<span style={{ fontSize: '14px', color: 'var(--text-2)' }}>%</span></div>
-                    <div className="summary-sub">acima da média</div>
-                </div>
+            {/* PAGE HEADER */}
+            <div className="flex flex-col gap-1 py-4">
+                <h1 className="text-[19px] font-semibold text-[#f0f0f2] tracking-tight">Campanhas</h1>
+                <p className="text-[13px] text-[#8a8a96]">Gerencie e monitore seus disparos em tempo real.</p>
             </div>
 
-            {/* Table Card */}
-            <div className="table-card">
-                {/* Toolbar */}
-                <div className="table-toolbar">
-                    <div className="toolbar-left">
-                        <div className="filter-tabs">
+            {/* SUMMARY STRIP */}
+            <div className="grid grid-cols-4 gap-3">
+                <SummaryCard
+                    label="Total"
+                    value={stats.total}
+                    sub="campanhas criadas"
+                    delay={0}
+                />
+                <SummaryCard
+                    label="Ativas agora"
+                    value={stats.active}
+                    sub="em disparo"
+                    delay={0.04}
+                    color="var(--green)"
+                />
+                <SummaryCard
+                    label="Emails enviados"
+                    value={stats.sent > 1000 ? (stats.sent / 1000).toFixed(1) + 'k' : stats.sent}
+                    sub="últimos 30 dias"
+                    delay={0.08}
+                />
+                <SummaryCard
+                    label="Taxa média entrega"
+                    value={<>{stats.avgDelivery}<span className="text-sm text-[#8a8a96] ml-0.5">%</span></>}
+                    sub="acima da média"
+                    delay={0.12}
+                />
+            </div>
+
+            {/* TABLE CARD */}
+            <div className="bg-[#141416] border border-white/5 rounded-[10px] overflow-hidden fade-up" style={{ animationDelay: '0.16s' }}>
+                {/* TOOLBAR */}
+                <div className="flex items-center justify-between p-4 px-5 border-b border-white/5 gap-3">
+                    <div className="flex items-center gap-0.5">
+                        {[
+                            { id: 'all', label: 'Todas' },
+                            { id: 'running', label: 'Ativas' },
+                            { id: 'paused', label: 'Pausadas' },
+                            { id: 'completed', label: 'Concluídas' },
+                            { id: 'draft', label: 'Rascunhos' },
+                        ].map((t) => (
                             <button
-                                className={`ftab ${filter === 'all' ? 'active' : ''}`}
-                                onClick={() => setFilter('all')}
-                            >Todas</button>
-                            <button
-                                className={`ftab ${filter === 'running' ? 'active' : ''}`}
-                                onClick={() => setFilter('running')}
-                            >Ativas</button>
-                            <button
-                                className={`ftab ${filter === 'paused' ? 'active' : ''}`}
-                                onClick={() => setFilter('paused')}
-                            >Pausadas</button>
-                            <button
-                                className={`ftab ${filter === 'completed' ? 'active' : ''}`}
-                                onClick={() => setFilter('completed')}
-                            >Concluídas</button>
-                            <button
-                                className={`ftab ${filter === 'draft' ? 'active' : ''}`}
-                                onClick={() => setFilter('draft')}
-                            >Rascunhos</button>
-                        </div>
+                                key={t.id}
+                                onClick={() => setFilter(t.id as any)}
+                                className={`px-[11px] py-[5px] rounded-md text-[12.5px] transition-all ${filter === t.id ? 'bg-[#1f1f23] text-[#f0f0f2] font-medium' : 'text-[#52525c] hover:text-[#8a8a96] hover:bg-[#1a1a1d]'}`}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
                     </div>
-                    <div className="toolbar-right">
-                        <div className="search-wrap">
-                            <span className="search-icon">
-                                <Search className="w-3.5 h-3.5" />
-                            </span>
+                    <div className="flex items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-[13px] h-[13px] text-[#52525c]" />
                             <input
                                 type="text"
                                 placeholder="Buscar campanha..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
+                                className="bg-[#1a1a1d] border border-white/10 rounded-[8px] text-[13px] text-[#f0f0f2] pl-8 pr-3 py-1.5 w-[220px] outline-none focus:border-green-500/40 focus:ring-4 focus:ring-green-500/5 transition-all placeholder:text-[#52525c]"
                             />
                         </div>
+                        <button className="btn-ghost" style={{ padding: '6px 10px' }}>
+                            <Activity className="w-[13px] h-[13px]" />
+                            Filtros
+                        </button>
                     </div>
                 </div>
 
-                {/* Content View */}
-                {!showEmpty && filtered.length > 0 ? (
-                    <div id="view-filled">
-                        <table>
-                            <thead>
+                {/* TABLE */}
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                        <thead>
+                            <tr className="border-b border-white/5">
+                                <th className="px-5 py-[10px] text-left text-[11.5px] font-medium text-[#52525c] uppercase tracking-[0.07em]">Campanha</th>
+                                <th className="px-5 py-[10px] text-left text-[11.5px] font-medium text-[#52525c] uppercase tracking-[0.07em]">Status</th>
+                                <th className="px-5 py-[10px] text-left text-[11.5px] font-medium text-[#52525c] uppercase tracking-[0.07em]">Progresso</th>
+                                <th className="px-5 py-[10px] text-left text-[11.5px] font-medium text-[#52525c] uppercase tracking-[0.07em]">Enviados</th>
+                                <th className="px-5 py-[10px] text-left text-[11.5px] font-medium text-[#52525c] uppercase tracking-[0.07em]">Abertura</th>
+                                <th className="px-5 py-[10px] text-right text-[11.5px] font-medium text-[#52525c] uppercase tracking-[0.07em]">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {loading ? (
+                                Array.from({ length: 3 }).map((_, i) => (
+                                    <tr key={i} className="animate-pulse">
+                                        <td colSpan={6} className="px-5 py-8 bg-white/[0.01]"></td>
+                                    </tr>
+                                ))
+                            ) : filteredCampaigns.length === 0 ? (
                                 <tr>
-                                    <th style={{ width: '36%' }}>Campanha</th>
-                                    <th style={{ width: '12%' }}>Status</th>
-                                    <th style={{ width: '24%' }}>Progresso</th>
-                                    <th style={{ width: '10%' }}>Enviados</th>
-                                    <th style={{ width: '10%' }}>Entrega</th>
-                                    <th style={{ width: '8%' }}>Ações</th>
+                                    <td colSpan={6} className="px-5 py-12">
+                                        <div className="flex flex-col items-center gap-3 text-center">
+                                            <div className="w-12 h-12 rounded-xl bg-[#00d26a]/10 border border-[#00d26a]/18 flex items-center justify-center mb-1">
+                                                <Mail className="w-[22px] h-[22px] text-[#00d26a]" strokeWidth={1.5} />
+                                            </div>
+                                            <h3 className="text-[15px] font-semibold text-[#f0f0f2]">Nenhuma campanha encontrada</h3>
+                                            <p className="text-[#8a8a96] text-[13px] max-w-[320px] leading-relaxed">Crie sua primeira campanha para começar a disparar emails em massa para suas listas.</p>
+                                        </div>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {filtered.map(c => {
-                                    const totalLeads = c.stats?.total || 0;
-                                    const sentCount = c.stats?.sent || 0;
-                                    const progress = totalLeads > 0 ? (sentCount / totalLeads) * 100 : 0;
-                                    const deliveryRate = totalLeads > 0 ? (sentCount / totalLeads) * 100 : 0;
-                                    const progColorClass = c.status === 'paused' ? 'yellow' : c.status === 'completed' ? 'blue' : '';
-
+                            ) : (
+                                filteredCampaigns.map((c) => {
+                                    const prog = c.stats?.total > 0 ? (c.stats.sent / c.stats.total) * 100 : 0;
+                                    const statusColor = c.status === 'running' ? 'bg-[#00d26a]' : c.status === 'paused' ? 'bg-[#fbbf24]' : 'bg-[#60a5fa]';
                                     return (
-                                        <tr key={c.id} onClick={() => onOpen(c)}>
-                                            <td>
-                                                <div className="camp-name">{c.name}</div>
-                                                <div className="camp-meta">Lista: {c.config?.listId || '—'} · {totalLeads} contatos</div>
-                                            </td>
-                                            <td><StatusBadge status={c.status} /></td>
-                                            <td>
-                                                <div className="progress-wrap">
-                                                    <div className="progress-bar">
-                                                        <div
-                                                            className={`progress-fill ${progColorClass}`}
-                                                            style={{ width: `${progress}%` }}
-                                                        ></div>
-                                                    </div>
-                                                    <span className="progress-pct">{Math.round(progress)}%</span>
+                                        <tr
+                                            key={c.id}
+                                            className="group hover:bg-white/[0.025] transition-colors cursor-pointer"
+                                            onClick={() => onOpen(c)}
+                                        >
+                                            <td className="px-5 py-3.5">
+                                                <div className="font-medium text-[#f0f0f2] text-[13px]">{c.name}</div>
+                                                <div className="text-[11.5px] text-[#52525c] mt-0.5">
+                                                    Lista: {c.config?.listId || '—'} · {c.stats?.total || 0} contatos
                                                 </div>
                                             </td>
-                                            <td><span className="stat-num">{sentCount}</span></td>
-                                            <td><span className="stat-num" style={{ color: deliveryRate > 90 ? 'var(--green)' : '' }}>{deliveryRate.toFixed(1)}%</span></td>
-                                            <td>
-                                                <div className="row-actions" onClick={e => e.stopPropagation()}>
-                                                    <button className="action-btn" title="Ver" onClick={() => onOpen(c)}>
-                                                        <Eye className="w-3.5 h-3.5" />
+                                            <td className="px-5 py-3.5">
+                                                <StatusBadge status={c.status} />
+                                            </td>
+                                            <td className="px-5 py-3.5">
+                                                <div className="flex items-center gap-[10px]">
+                                                    <div className="flex-1 h-1 bg-[#1f1f23] rounded-[2px] overflow-hidden max-w-[140px]">
+                                                        <div
+                                                            className={`h-full transition-all duration-1000 rounded-[2px] ${statusColor}`}
+                                                            style={{ width: `${prog}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-[12px] text-[#8a8a96] font-mono w-[36px] text-right">{prog > 0 ? Math.round(prog) + '%' : '—'}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-3.5">
+                                                <span className="text-[12.5px] text-[#8a8a96] font-mono">{c.stats?.sent || '—'}</span>
+                                            </td>
+                                            <td className="px-5 py-3.5">
+                                                <span className="text-[12.5px] text-[#00d26a] font-mono">34.2%</span>
+                                            </td>
+                                            <td className="px-5 py-3.5">
+                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        className="w-7 h-7 rounded-md border border-transparent hover:border-white/10 hover:bg-[#1f1f23] flex items-center justify-center text-[#52525c] hover:text-[#f0f0f2] transition-all"
+                                                        title="Visualizar"
+                                                        onClick={(e) => { e.stopPropagation(); onOpen(c); }}
+                                                    >
+                                                        <Eye className="w-[13px] h-[13px]" strokeWidth={1.5} />
                                                     </button>
-                                                    <button className="action-btn" title="Configurar">
-                                                        <Clock className="w-3.5 h-3.5" />
+                                                    <button className="w-7 h-7 rounded-md border border-transparent hover:border-white/10 hover:bg-[#1f1f23] flex items-center justify-center text-[#52525c] hover:text-[#f0f0f2] transition-all" title="Configurar">
+                                                        <Clock className="w-[13px] h-[13px]" strokeWidth={1.5} />
                                                     </button>
                                                     <button
-                                                        className="action-btn danger"
+                                                        className="w-7 h-7 rounded-md border border-transparent hover:bg-red-500/10 flex items-center justify-center text-[#52525c] hover:text-red-500 transition-all"
                                                         title="Excluir"
                                                         onClick={(e) => handleDelete(e, c.id)}
                                                     >
-                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                        <Trash2 className="w-[13px] h-[13px]" strokeWidth={1.5} />
                                                     </button>
                                                 </div>
                                             </td>
                                         </tr>
                                     );
-                                })}
-                            </tbody>
-                        </table>
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
 
-                        <div className="table-footer">
-                            <span className="table-footer-info">Mostrando {filtered.length} de {campaigns.length} campanhas</span>
-                            <div className="pagination">
-                                <button className="page-btn">
-                                    <ChevronRight className="w-3.5 h-3.5 rotate-180" />
-                                </button>
-                                <button className="page-btn active">1</button>
-                                <button className="page-btn">
-                                    <ChevronRight className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        </div>
+                {/* TABLE FOOTER */}
+                <div className="flex items-center justify-between p-3 px-5 border-t border-white/5">
+                    <span className="text-[12px] text-[#52525c]">Mostrando {filteredCampaigns.length} de {campaigns.length} campanhas</span>
+                    <div className="flex gap-1">
+                        <button className="w-7 h-7 rounded-md border border-white/7 flex items-center justify-center text-[#8a8a96] hover:text-[#f0f0f2] hover:bg-[#1a1a1d] transition-all disabled:opacity-30" disabled>
+                            <ChevronRight className="w-3 h-3 rotate-180" />
+                        </button>
+                        <button className="w-7 h-7 rounded-md bg-[#1f1f23] text-[#f0f0f2] text-[12px] font-medium border border-white/12">1</button>
+                        <button className="w-7 h-7 rounded-md border border-white/7 flex items-center justify-center text-[#8a8a96] hover:text-[#f0f0f2] hover:bg-[#1a1a1d] transition-all disabled:opacity-30" disabled>
+                            <ChevronRight className="w-3 h-3" />
+                        </button>
                     </div>
-                ) : (
-                    <div id="view-empty">
-                        <div className="empty-state">
-                            <div className="empty-icon-wrap">
-                                <Mail className="w-6 h-6 text-[#00d26a]" />
-                            </div>
-                            <div className="empty-title">Nenhuma campanha encontrada</div>
-                            <div className="empty-desc">Crie sua primeira campanha para começar a disparar emails em massa para suas listas.</div>
-                            <div className="empty-actions">
-                                <button className="btn-ghost" onClick={() => setShowEmpty(false)}>Ver campanhas</button>
-                                <button className="btn-primary" onClick={onNew}>
-                                    <Plus className="w-3.5 h-3.5" />
-                                    Nova campanha
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                </div>
             </div>
         </div>
     );
@@ -423,7 +418,7 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
     const selectedList = useMemo(() => lists.find(l => l.id === form.listId), [lists, form.listId]);
     const selectedTemplate = useMemo(() => templates.find(t => t.id === form.templateId), [templates, form.templateId]);
 
-    const calcStats = useMemo(() => {
+    const stats = useMemo(() => {
         const leadCount = selectedList?.leads?.length || 0;
         const instanceCount = form.instanceIds.length;
         const perInstance = instanceCount > 0 ? Math.ceil(leadCount / instanceCount) : 0;
@@ -446,10 +441,10 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
                     intervalMax: form.maxDelay
                 },
                 stats: {
-                    total: calcStats.leadCount,
+                    total: stats.leadCount,
                     sent: 0,
                     failed: 0,
-                    pending: calcStats.leadCount
+                    pending: stats.leadCount
                 }
             } as any);
 
@@ -627,11 +622,11 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
                         <div className="grid grid-cols-2 gap-4">
                             <div className="p-4 rounded-2xl bg-black border border-neutral-800 space-y-1">
                                 <span className="text-[10px] uppercase text-neutral-500 tracking-wider">Leads Totais</span>
-                                <p className="text-2xl font-semibold text-white">{calcStats.leadCount}</p>
+                                <p className="text-2xl font-semibold text-white">{stats.leadCount}</p>
                             </div>
                             <div className="p-4 rounded-2xl bg-black border border-neutral-800 space-y-1">
                                 <span className="text-[10px] uppercase text-neutral-500 tracking-wider">Instâncias</span>
-                                <p className="text-2xl font-semibold text-white">{calcStats.instanceCount}</p>
+                                <p className="text-2xl font-semibold text-white">{stats.instanceCount}</p>
                             </div>
                         </div>
 
@@ -640,8 +635,8 @@ function WizardView({ onBack, onStart }: { onBack: () => void, onStart: (c: Camp
                             <div>
                                 <h4 className="text-sm font-semibold text-white">Pronto para o disparo</h4>
                                 <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                                    Temos <strong>{calcStats.leadCount} leads</strong>. Usando <strong>{calcStats.instanceCount} instâncias</strong>.
-                                    Cada conta enviará aproximadamente <strong>{calcStats.perInstance} e-mails</strong>.
+                                    Temos <strong>{stats.leadCount} leads</strong>. Usando <strong>{stats.instanceCount} instâncias</strong>.
+                                    Cada conta enviará aproximadamente <strong>{stats.perInstance} e-mails</strong>.
                                 </p>
                             </div>
                         </div>
