@@ -77,10 +77,10 @@ function StatusBadge({ status }: { status: Campaign['status'] }) {
 
 function SummaryCard({ label, value, sub, delay = 0, color }: { label: string, value: React.ReactNode, sub: string, delay?: number, color?: string }) {
     return (
-        <div className="bg-[#141416] border border-white/5 rounded-[12px] p-6 px-7 fade-up" style={{ animationDelay: `${delay}s` }}>
-            <div className="text-[12px] text-[#52525c] uppercase tracking-wider mb-2.5">{label}</div>
-            <div className="text-3xl font-semibold text-[#f0f0f2] font-mono leading-tight mb-1.5" style={{ color }}>{value}</div>
-            <div className="text-[12px] text-[#52525c]">{sub}</div>
+        <div className="bg-[#141416] border border-white/5 rounded-[16px] p-10 px-11 fade-up" style={{ animationDelay: `${delay}s` }}>
+            <div className="text-[13px] text-[#52525c] uppercase tracking-[0.12em] mb-5 font-medium">{label}</div>
+            <div className="text-4xl font-semibold text-[#f0f0f2] font-mono leading-none mb-3" style={{ color }}>{value}</div>
+            <div className="text-[13px] text-[#52525c] mt-2">{sub}</div>
         </div>
     );
 }
@@ -190,27 +190,26 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-12">
             {/* STICKY TOPBAR */}
-            <div className="h-[64px] sticky top-0 bg-[#0d0d0f] z-50 flex items-center justify-between px-10 -mx-10 border-b border-white/5">
-                <div className="flex items-center gap-2.5 text-[13.5px] text-[#52525c]">
-                    <span>Green Arrow</span>
-                    <ChevronRight className="w-4 h-4" />
-                    <b className="text-[#f0f0f2] font-medium">Campanhas</b>
+            <div className="h-[76px] sticky top-0 bg-[#0d0d0f]/80 backdrop-blur-md z-50 flex items-center justify-between px-14 -mx-14 border-b border-white/5">
+                <div className="flex items-center gap-3 text-[14px] text-[#52525c]">
+                    <span className="opacity-60 transition-opacity hover:opacity-100 cursor-pointer">Green Arrow</span>
+                    <ChevronRight className="w-4 h-4 opacity-30" />
+                    <b className="text-[#f0f0f2] font-medium tracking-wide">Campanhas</b>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={onNew} className="btn-primary" style={{ padding: '8px 20px' }}>
+                <div className="flex items-center gap-4">
+                    <button onClick={onNew} className="btn-primary" style={{ padding: '12px 28px', borderRadius: '10px' }}>
                         <Plus className="w-4 h-4" strokeWidth={3} />
                         Nova campanha
                     </button>
                 </div>
             </div>
 
-            {/* SPACER (Removed duplicate header) */}
             <div className="h-4" />
 
             {/* SUMMARY STRIP */}
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-4 gap-6">
                 <SummaryCard
                     label="Total"
                     value={stats.total}
@@ -239,10 +238,10 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
             </div>
 
             {/* TABLE CARD */}
-            <div className="bg-[#141416] border border-white/5 rounded-[12px] overflow-hidden fade-up" style={{ animationDelay: '0.16s' }}>
+            <div className="bg-[#141416] border border-white/5 rounded-[16px] overflow-hidden fade-up" style={{ animationDelay: '0.16s' }}>
                 {/* TOOLBAR */}
-                <div className="flex items-center justify-between p-6 px-7 border-b border-white/5 gap-4">
-                    <div className="flex items-center gap-1">
+                <div className="flex items-center justify-between p-10 px-12 border-b border-white/5 gap-6">
+                    <div className="flex items-center gap-1.5">
                         {[
                             { id: 'all', label: 'Todas' },
                             { id: 'running', label: 'Ativas' },
@@ -253,25 +252,25 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
                             <button
                                 key={t.id}
                                 onClick={() => setFilter(t.id as any)}
-                                className={`px-4 py-2 rounded-md text-[13px] transition-all ${filter === t.id ? 'bg-[#1f1f23] text-[#f0f0f2] font-medium' : 'text-[#52525c] hover:text-[#8a8a96] hover:bg-[#1a1a1d]'}`}
+                                className={`px-5 py-2.5 rounded-lg text-[13.5px] transition-all ${filter === t.id ? 'bg-[#1f1f23] text-[#f0f0f2] font-semibold' : 'text-[#52525c] hover:text-[#8a8a96] hover:bg-[#1a1a1d]'}`}
                             >
                                 {t.label}
                             </button>
                         ))}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                         <div className="relative">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[14px] h-[14px] text-[#52525c]" />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-[15px] h-[15px] text-[#52525c]" />
                             <input
                                 type="text"
                                 placeholder="Buscar campanha..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                className="bg-[#1a1a1d] border border-white/10 rounded-[10px] text-[13px] text-[#f0f0f2] pl-10 pr-4 py-2 w-[240px] outline-none focus:border-green-500/40 focus:ring-4 focus:ring-green-500/5 transition-all placeholder:text-[#52525c]"
+                                className="bg-[#1a1a1d] border border-white/10 rounded-[12px] text-[14px] text-[#f0f0f2] pl-11 pr-5 py-2.5 w-[280px] outline-none focus:border-green-500/40 focus:ring-8 focus:ring-green-500/5 transition-all placeholder:text-[#52525c]"
                             />
                         </div>
-                        <button className="btn-ghost" style={{ padding: '8px 14px' }}>
-                            <Activity className="w-[14px] h-[14px]" />
+                        <button className="btn-ghost" style={{ padding: '10px 18px', borderRadius: '10px' }}>
+                            <Activity className="w-[15px] h-[15px]" />
                             Filtros
                         </button>
                     </div>
@@ -282,12 +281,12 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="border-b border-white/5">
-                                <th className="px-7 py-4 text-left text-[12px] font-medium text-[#52525c] uppercase tracking-[0.08em]">Campanha</th>
-                                <th className="px-7 py-4 text-left text-[12px] font-medium text-[#52525c] uppercase tracking-[0.08em]">Status</th>
-                                <th className="px-7 py-4 text-left text-[12px] font-medium text-[#52525c] uppercase tracking-[0.08em]">Progresso</th>
-                                <th className="px-7 py-4 text-left text-[12px] font-medium text-[#52525c] uppercase tracking-[0.08em]">Enviados</th>
-                                <th className="px-7 py-4 text-left text-[12px] font-medium text-[#52525c] uppercase tracking-[0.08em]">Abertura</th>
-                                <th className="px-7 py-4 text-right text-[12px] font-medium text-[#52525c] uppercase tracking-[0.08em]">Ações</th>
+                                <th className="px-12 py-6 text-left text-[13px] font-medium text-[#52525c] uppercase tracking-[0.1em]">Campanha</th>
+                                <th className="px-12 py-6 text-left text-[13px] font-medium text-[#52525c] uppercase tracking-[0.1em]">Status</th>
+                                <th className="px-12 py-6 text-left text-[13px] font-medium text-[#52525c] uppercase tracking-[0.1em]">Progresso</th>
+                                <th className="px-12 py-6 text-left text-[13px] font-medium text-[#52525c] uppercase tracking-[0.1em]">Enviados</th>
+                                <th className="px-12 py-6 text-left text-[13px] font-medium text-[#52525c] uppercase tracking-[0.1em]">Abertura</th>
+                                <th className="px-12 py-6 text-right text-[13px] font-medium text-[#52525c] uppercase tracking-[0.1em]">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
@@ -319,50 +318,50 @@ function ListingView({ campaigns, loading, onNew, onOpen }: {
                                             className="group hover:bg-white/[0.025] transition-colors cursor-pointer"
                                             onClick={() => onOpen(c)}
                                         >
-                                            <td className="px-7 py-5">
-                                                <div className="font-medium text-[#f0f0f2] text-[14px]">{c.name}</div>
-                                                <div className="text-[12px] text-[#52525c] mt-1">
+                                            <td className="px-12 py-8">
+                                                <div className="font-semibold text-[#f0f0f2] text-[15px]">{c.name}</div>
+                                                <div className="text-[13px] text-[#52525c] mt-2">
                                                     Lista: {c.config?.listId || '—'} · {c.stats?.total || 0} contatos
                                                 </div>
                                             </td>
-                                            <td className="px-7 py-5">
+                                            <td className="px-12 py-8">
                                                 <StatusBadge status={c.status} />
                                             </td>
-                                            <td className="px-7 py-5">
-                                                <div className="flex items-center gap-[12px]">
-                                                    <div className="flex-1 h-1.5 bg-[#1f1f23] rounded-[3px] overflow-hidden max-w-[160px]">
+                                            <td className="px-12 py-8">
+                                                <div className="flex items-center gap-[14px]">
+                                                    <div className="flex-1 h-2 bg-[#1f1f23] rounded-[4px] overflow-hidden max-w-[180px]">
                                                         <div
-                                                            className={`h-full transition-all duration-1000 rounded-[3px] ${statusColor}`}
+                                                            className={`h-full transition-all duration-1000 rounded-[4px] ${statusColor}`}
                                                             style={{ width: `${prog}%` }}
                                                         />
                                                     </div>
-                                                    <span className="text-[12.5px] text-[#8a8a96] font-mono w-[36px] text-right">{prog > 0 ? Math.round(prog) + '%' : '—'}</span>
+                                                    <span className="text-[13px] text-[#8a8a96] font-mono w-[40px] text-right">{prog > 0 ? Math.round(prog) + '%' : '—'}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-7 py-5">
-                                                <span className="text-[13px] text-[#8a8a96] font-mono">{c.stats?.sent || '—'}</span>
+                                            <td className="px-12 py-8">
+                                                <span className="text-[14px] text-[#8a8a96] font-mono">{c.stats?.sent || '—'}</span>
                                             </td>
-                                            <td className="px-7 py-5">
-                                                <span className="text-[13px] text-[#00d26a] font-mono">34.2%</span>
+                                            <td className="px-12 py-8">
+                                                <span className="text-[14px] text-[#00d26a] font-mono">34.2%</span>
                                             </td>
-                                            <td className="px-7 py-5">
-                                                <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <td className="px-12 py-8">
+                                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
-                                                        className="w-8 h-8 rounded-md border border-transparent hover:border-white/10 hover:bg-[#1f1f23] flex items-center justify-center text-[#52525c] hover:text-[#f0f0f2] transition-all"
+                                                        className="w-10 h-10 rounded-lg border border-transparent hover:border-white/10 hover:bg-[#1f1f23] flex items-center justify-center text-[#52525c] hover:text-[#f0f0f2] transition-all"
                                                         title="Visualizar"
                                                         onClick={(e) => { e.stopPropagation(); onOpen(c); }}
                                                     >
-                                                        <Eye className="w-[14px] h-[14px]" strokeWidth={1.5} />
+                                                        <Eye className="w-[16px] h-[16px]" strokeWidth={1.5} />
                                                     </button>
-                                                    <button className="w-8 h-8 rounded-md border border-transparent hover:border-white/10 hover:bg-[#1f1f23] flex items-center justify-center text-[#52525c] hover:text-[#f0f0f2] transition-all" title="Configurar">
-                                                        <Clock className="w-[14px] h-[14px]" strokeWidth={1.5} />
+                                                    <button className="w-10 h-10 rounded-lg border border-transparent hover:border-white/10 hover:bg-[#1f1f23] flex items-center justify-center text-[#52525c] hover:text-[#f0f0f2] transition-all" title="Configurar">
+                                                        <Clock className="w-[16px] h-[16px]" strokeWidth={1.5} />
                                                     </button>
                                                     <button
-                                                        className="w-8 h-8 rounded-md border border-transparent hover:bg-red-500/10 flex items-center justify-center text-[#52525c] hover:text-red-500 transition-all"
+                                                        className="w-10 h-10 rounded-lg border border-transparent hover:bg-red-500/10 flex items-center justify-center text-[#52525c] hover:text-red-500 transition-all"
                                                         title="Excluir"
                                                         onClick={(e) => handleDelete(e, c.id)}
                                                     >
-                                                        <Trash2 className="w-[14px] h-[14px]" strokeWidth={1.5} />
+                                                        <Trash2 className="w-[16px] h-[16px]" strokeWidth={1.5} />
                                                     </button>
                                                 </div>
                                             </td>
